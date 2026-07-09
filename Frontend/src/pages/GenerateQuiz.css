@@ -1,0 +1,123 @@
+.page {
+    min-height: 100vh;
+    background: #f4f7fb;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+}
+
+.card {
+    width: 100%;
+    max-width: 550px;
+    background: #fff;
+    border-radius: 18px;
+    padding: 35px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.12);
+}
+
+.card h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #2d3748;
+}
+
+.card input,
+.card select {
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 18px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    font-size: 16px;
+    transition: 0.3s;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.card input:focus,
+.card select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+
+.card button {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    font-size: 17px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.card button:hover {
+    background: #1d4ed8;
+    transform: translateY(-2px);
+}
+
+.card button:active {
+    transform: scale(0.98);
+}
+
+@media (max-width: 600px) {
+    .page {
+        padding: 20px;
+    }
+
+    .card {
+        padding: 25px;
+    }
+
+    .card h1 {
+        font-size: 24px;
+    }
+}
+.dashboard-actions {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.dashboard-actions button {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    transition: 0.3s;
+}
+
+.dashboard-actions button:hover {
+    background: #1d4ed8;
+    transform: translateY(-2px);
+}
+.top-navigation{
+    display:flex;
+    justify-content:flex-start;
+    margin-bottom:20px;
+}
+
+.home-btn{
+    background:#2563eb;
+    color:white;
+    border:none;
+    padding:10px 20px;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:16px;
+    font-weight:600;
+    transition:0.3s;
+}
+
+.home-btn:hover{
+    background:#1d4ed8;
+    transform:translateY(-2px);
+}

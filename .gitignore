@@ -1,0 +1,76 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Environment Variables
+.env
+.env.*
+
+# Python Tool Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Python Build
+build/
+dist/
+*.egg
+*.egg-info/
+pip-wheel-metadata/
+
+# SQLite Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# React / Vite
+**/node_modules/
+**/dist/
+**/.vite/
+Frontend/.npm/
+Frontend/.yarn/
+
+# npm / yarn Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ChromaDB
+Backend/chroma_db/
+
+# Temporary Files
+*.tmp
+*.temp
+
+# Misc
+.python-version
+.ipynb_checkpoints/
+# VS Code Workspace
+*.code-workspace
+
+# Mac resource forks
+._*
