@@ -22,13 +22,12 @@ origins = [
     settings.FRONTEND_PREVIEW_URL,
 ]
 
-print("FRONTEND_URL =", settings.FRONTEND_URL)
-print("FRONTEND_PREVIEW_URL =", settings.FRONTEND_PREVIEW_URL)
+ 
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
