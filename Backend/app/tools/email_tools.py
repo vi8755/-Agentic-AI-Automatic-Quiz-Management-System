@@ -1,7 +1,6 @@
 import requests
 
 from langchain_core.tools import tool
-
 from ..config import settings
 
 
@@ -37,12 +36,16 @@ def send_quiz_email(
         "textContent": body,
     }
 
+    # 👇 Replace this section
     response = requests.post(
         url,
         json=payload,
         headers=headers,
         timeout=30,
     )
+
+    print("Status:", response.status_code)
+    print("Response:", response.text)
 
     if response.status_code not in [200, 201]:
         raise Exception(
