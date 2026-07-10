@@ -1,15 +1,10 @@
 from langchain_core.messages import HumanMessage
-from langchain_ollama import ChatOllama
 
 from ..database import SessionLocal
 from ..models import Student
 from ..tools.student_tools import read_students_excel
 
-
-llm = ChatOllama(
-    model="qwen2.5:7b",
-    temperature=0,
-)
+ 
 
 
 student_tools = [

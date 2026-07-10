@@ -2,13 +2,9 @@ import json
 
 from json_repair import repair_json
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
+from ..llm import llm
 
 
-llm = ChatOllama(
-    model="qwen2.5:7b",
-    temperature=0,
-)
 
 
 @tool

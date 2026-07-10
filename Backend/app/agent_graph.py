@@ -7,7 +7,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
+from .llm import llm
 
 from .agents.student_agent import student_agent
 from .agents.quiz_agent import quiz_agent
@@ -21,10 +21,6 @@ from .rag_tool import knowledge_search
 # ======================================================
 
 
-llm = ChatOllama(
-    model=settings.OLLAMA_MODEL,
-    temperature=0
-)
 
 # ======================================================
 # Long Term Memory

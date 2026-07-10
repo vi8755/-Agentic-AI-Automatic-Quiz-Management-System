@@ -5,7 +5,7 @@ BASE_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = BASE_DIR.parent
 
 class Settings(BaseSettings):
-    GOOGLE_API_KEY: str
+    Groq_API_KEY: str
 
     EMAIL_ADDRESS: str
     EMAIL_PASSWORD: str
@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     BACKEND_URL: str
     FRONTEND_PREVIEW_URL: str = "http://localhost:4173"
 
-    OLLAMA_MODEL: str = "qwen2.5:7b"
+    GROQ_MODEL:str
 
     CHROMA_DB: str = str(BACKEND_DIR / "chroma_db")
 

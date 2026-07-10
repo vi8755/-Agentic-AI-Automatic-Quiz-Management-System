@@ -1,10 +1,6 @@
-from langchain_ollama import ChatOllama
+from ..llm import llm
 
-
-llm = ChatOllama(
-    model="qwen2.5:7b",
-    temperature=0
-)
+ 
 
 
 def feedback_agent(state):

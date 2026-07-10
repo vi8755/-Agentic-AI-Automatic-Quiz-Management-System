@@ -1,5 +1,5 @@
 from langchain_core.messages import HumanMessage
-from langchain_ollama import ChatOllama
+from ..llm import llm
 
 from ..tools.quiz_tools import generate_quiz
 from ..tools.web_quiz_tools import create_quiz_web
@@ -10,12 +10,7 @@ quiz_tools = [
     create_quiz_web,
 ]
 
-
-llm = ChatOllama(
-    model="qwen2.5:7b",
-    temperature=0,
-)
-
+ 
 
 def quiz_agent(state):
     result = generate_quiz.invoke(

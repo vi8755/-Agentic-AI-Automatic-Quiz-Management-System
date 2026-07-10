@@ -1,249 +1,159 @@
-# 🤖 Agentic AI Automatic Quiz Management System
+# QuizGenAI -- Agentic AI Quiz Management System
 
-An AI-powered Quiz Management System that automatically generates quizzes, assigns them to students, evaluates answers using AI, and provides personalized feedback.
+> An AI-powered quiz management platform built with **FastAPI**,
+> **React**, **LangGraph**, **LangChain**, **ChromaDB**, **SQLite**, and
+> **Groq LLM**.
 
-Built using **FastAPI**, **React**, **LangGraph**, **LangChain**, **Ollama**, and **SQLite**.
+## 🚀 Overview
 
----
+QuizGenAI automates the complete quiz lifecycle---from student
+management to AI-generated quizzes, evaluation, analytics, and
+personalized feedback.
 
-# 📌 Features
+## ✨ Features
 
-## 🤖 AI Features
+-   Student Management
+    -   Add/Delete students
+    -   Excel upload
+    -   Search & filter
+-   AI Quiz Generation using Groq
+-   Quiz Assignment
+-   Email Notifications (SMTP)
+-   Online Quiz Attempt
+-   Automatic Evaluation
+-   Personalized AI Feedback
+-   Admin Dashboard & Analytics
+-   RAG-based Knowledge Retrieval
+-   LangGraph Workflow
 
-- AI Quiz Generation
-- AI Quiz Evaluation
-- AI Personalized Feedback
-- LangGraph Evaluation Workflow
-- Email Agent
-- Retrieval-Augmented Generation (RAG)
-- ChromaDB Knowledge Base
+## 🏗️ Tech Stack
 
----
+### Frontend
 
-## 👨‍🎓 Student Management
+-   React
+-   Vite
+-   CSS
 
-- Add Student Manually
-- Upload Students via Excel
-- Download Excel Template
-- Duplicate Student Validation
-- Email Validation
-- Delete Student
-- Search Student
-- Department Filter
+### Backend
 
----
+-   FastAPI
+-   SQLAlchemy
+-   SQLite
 
-## 📝 Quiz Management
+### AI
 
-- Generate AI Quiz
-- Assign Quiz
-- Email Quiz Link
-- Student Quiz Page
-- Result Page
-- Prevent Multiple Attempts
+-   LangChain
+-   LangGraph
+-   Groq (Llama 3.3 70B)
+-   ChromaDB
+-   HuggingFace Embeddings
 
----
+## 📂 Project Structure
 
-## 📊 Admin Dashboard
-
-- Overall Statistics
-- Student Performance
-- Student Progress
-- Quiz Analytics
-- Weak Topics
-- Leaderboard
-- Topic Analytics
-- Score Trend
-- Most Difficult Quiz
-- Auto Refresh Dashboard
-
----
-
-# 🛠 Tech Stack
-
-## Backend
-
-- FastAPI
-- SQLAlchemy
-- SQLite
-- LangGraph
-- LangChain
-- Ollama (Qwen2.5:7B)
-- ChromaDB
-- Gmail SMTP
-
-## Frontend
-
-- React
-- Vite
-- Axios
-- React Router
-- React Toastify
-- Recharts
-
----
-
-# 🏗 Architecture
-
-```
-Admin
-   │
-   ▼
-React Frontend
-   │
-   ▼
-FastAPI Backend
-   │
-   ├── Student Management
-   ├── Quiz Management
-   ├── AI Quiz Generator
-   ├── Evaluation Workflow
-   └── Analytics
-   │
-   ▼
-LangGraph
-   │
-   ├── Planner Agent
-   ├── Student Agent
-   ├── Quiz Agent
-   ├── Email Agent
-   └── Evaluation Agent
-   │
-   ▼
-Ollama + ChromaDB + SQLite
+``` text
+first-agent/
+├── Backend/
+│   ├── app/
+│   ├── requirements.txt
+│   └── .env
+├── Frontend/
+│   ├── src/
+│   └── package.json
+└── README.md
 ```
 
----
+## ⚙️ Installation
 
-# ⚙ Installation
+### Backend
 
-## Clone Repository
-
-```bash
-git clone <repository-url>
-```
-
----
-
-## Backend
-
-```bash
-cd Backend
+``` bash
+git clone <repo-url>
+cd first-agent/Backend
 
 python -m venv venv
-
 venv\Scripts\activate
 
 pip install -r requirements.txt
-```
-
-Create a `.env` file.
-
-```env
-GOOGLE_API_KEY=
-
-EMAIL_ADDRESS=
-
-EMAIL_PASSWORD=
-
-FRONTEND_URL=http://localhost:4173
-
-BACKEND_URL=http://localhost:8000
-
-OLLAMA_MODEL=qwen2.5:7b
-```
-
-Run backend
-
-```bash
 uvicorn app.main:app --reload
 ```
 
----
+### Frontend
 
-## Frontend
-
-```bash
-cd Frontend
-
+``` bash
+cd ../Frontend
 npm install
-```
-
-Create a `.env`
-
-```env
-VITE_BACKEND_URL=http://localhost:8000
-```
-
-Run frontend
-
-```bash
 npm run dev
 ```
 
----
+## 🔑 Environment Variables
 
-# 📂 Project Structure
+Backend `.env`
 
-```
-Backend/
-    app/
-        agents/
-        routes/
-        tools/
-        config.py
-        database.py
-        main.py
-
-Frontend/
-    src/
-    public/
-
-README.md
+``` env
+DATABASE_URL=sqlite:///quiz.db
+EMAIL_ADDRESS=your_email
+EMAIL_PASSWORD=your_password
+GROQ_API_KEY=your_api_key
+GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
----
+## 🤖 AI Workflow
 
-# 📸 Screenshots
+1.  Admin uploads students.
+2.  Admin generates quiz.
+3.  Groq generates MCQs.
+4.  Quiz is stored.
+5.  Email with quiz link is sent.
+6.  Student attempts quiz.
+7.  AI evaluates performance.
+8.  Personalized feedback is generated.
+9.  Dashboard updates analytics.
 
-> Add screenshots after deployment.
+## 📊 Current Status
 
-- Home Page
-- Admin Dashboard
-- Student Management
-- Quiz Page
-- Result Page
-- Analytics Dashboard
+-   ✅ Student Management
+-   ✅ Quiz Generation
+-   ✅ AI Feedback
+-   ✅ Dashboard
+-   ✅ Email
+-   ✅ LangGraph
+-   ✅ RAG
+-   ✅ Groq Integration
+-   ⏳ Render Deployment
+-   ⏳ Vercel Deployment
 
----
+## 📸 Screenshots
 
-# 🚀 Future Improvements
+Add after deployment:
 
-- Student Authentication
-- Admin Authentication
-- Quiz Timer
-- Quiz Expiry
-- Edit Quiz
-- Edit Student
-- Export PDF Reports
-- Export Excel Reports
-- AI Study Plan
-- Email Reminders
-- Docker Support
-- Cloud Deployment
+-   Home Page
+-   Admin Dashboard
+-   Student Quiz
+-   Result Page
+-   Analytics
+-   AI Feedback
 
----
+## 🚀 Deployment
 
-# 👨‍💻 Author
+Backend: Render
+
+Frontend: Vercel
+
+## 🛣️ Future Improvements
+
+-   JWT Authentication
+-   Role-based Access
+-   PDF Reports
+-   AI Difficulty Adaptation
+-   Leaderboard
+-   Timer
+-   Question Bank
+-   Multi-language Support
+
+## 👨‍💻 Author
 
 **Vishal Kumar**
 
-B.Tech Computer Science Engineering
+B.Tech CSE \| AI & Full Stack Developer
 
-AI | Machine Learning | Full Stack Development
-
----
-
-# ⭐ If you like this project
-
-Give it a ⭐ on GitHub.
+If you found this project useful, consider giving it a ⭐ on GitHub.
