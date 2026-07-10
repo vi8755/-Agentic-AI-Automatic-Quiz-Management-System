@@ -185,11 +185,10 @@ def assign_quiz(
     )
 
     if not quiz:
-            raise HTTPException(
+        raise HTTPException(
             status_code=404,
-            detail="Quiz not found"
-)
-        
+            detail="Quiz not found",
+        )
 
     sent = 0
 
@@ -219,13 +218,13 @@ def assign_quiz(
         )
 
         db.add(assignment)
-        
-    try:
-        send_quiz_email.invoke(
-            {
-                "receiver_email": email,
-                "subject": "AI Generated Quiz Assigned",
-                "body": f"""
+
+        try:
+            send_quiz_email.invoke(
+                {
+                    "receiver_email": email,
+                    "subject": "AI Generated Quiz Assigned",
+                    "body": f"""
 Hello Student,
 
 You have been assigned a new quiz.
@@ -241,13 +240,12 @@ Good luck!
 
 AI Quiz System
 """,
-            }
-        )
+                }
+            )
+            sent += 1
 
-        sent += 1
-
-    except Exception as e:
-     print(f"Email sending failed for {email}: {e}")
+        except Exception as e:
+            print(f"Email sending failed for {email}: {e}")
 
     db.commit()
 
@@ -255,7 +253,6 @@ AI Quiz System
         "message": "Quiz assigned successfully",
         "emails_sent": sent,
     }
-
 @router.get("/assignments")
 def get_assignments(
     db: Session = Depends(get_db),
