@@ -219,7 +219,8 @@ def assign_quiz(
         )
 
         db.add(assignment)
-
+        
+    try:
         send_quiz_email.invoke(
             {
                 "receiver_email": email,
@@ -244,6 +245,9 @@ AI Quiz System
         )
 
         sent += 1
+
+    except Exception as e:
+     print(f"Email sending failed for {email}: {e}")
 
     db.commit()
 
