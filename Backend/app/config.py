@@ -5,7 +5,7 @@ BASE_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = BASE_DIR.parent
 
 class Settings(BaseSettings):
-    Groq_API_KEY: str
+    GROQ_API_KEY: str
 
     EMAIL_ADDRESS: str
     EMAIL_PASSWORD: str
