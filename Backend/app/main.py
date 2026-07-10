@@ -22,6 +22,8 @@ origins = [
     settings.FRONTEND_PREVIEW_URL,
 ]
 
+print("FRONTEND_URL =", settings.FRONTEND_URL)
+print("FRONTEND_PREVIEW_URL =", settings.FRONTEND_PREVIEW_URL)
 
 
 app.add_middleware(
