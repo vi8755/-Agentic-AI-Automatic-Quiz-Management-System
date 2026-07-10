@@ -1,9 +1,7 @@
-import smtplib
-
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 
 from langchain_core.tools import tool
+
 from ..config import settings
 
 
@@ -14,51 +12,41 @@ def send_quiz_email(
     body: str,
 ):
     """
-    Send an email to a student.
+    Send an email using Brevo API.
     """
 
-    sender_email = settings.EMAIL_ADDRESS
-    password = settings.EMAIL_PASSWORD
+    url = "https://api.brevo.com/v3/smtp/email"
 
- 
+    headers = {
+        "accept": "application/json",
+        "api-key": settings.BREVO_API_KEY,
+        "content-type": "application/json",
+    }
 
-    server = smtplib.SMTP(
-        "smtp.gmail.com",
-        587,
+    payload = {
+        "sender": {
+            "name": "AI Quiz System",
+            "email": settings.EMAIL_ADDRESS,
+        },
+        "to": [
+            {
+                "email": receiver_email,
+            }
+        ],
+        "subject": subject,
+        "textContent": body,
+    }
+
+    response = requests.post(
+        url,
+        json=payload,
+        headers=headers,
         timeout=30,
     )
 
- 
-
-    server.starttls()
-
- 
-
-    server.login(
-        sender_email,
-        password,
-    )
-
- 
-    # Create UTF-8 email
-    msg = MIMEMultipart()
-
-    msg["From"] = sender_email
-    msg["To"] = receiver_email
-    msg["Subject"] = subject
-
-    msg.attach(
-        MIMEText(body, "plain", "utf-8")
-    )
-
-    server.sendmail(
-        sender_email,
-        receiver_email,
-        msg.as_string(),
-    )
-
-
-
-    server.quit()
+    if response.status_code not in [200, 201]:
+        raise Exception(
+            f"Brevo Error: {response.status_code} - {response.text}"
+        )
 
     return f"Email sent successfully to {receiver_email}"

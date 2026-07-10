@@ -6,6 +6,7 @@ BACKEND_DIR = BASE_DIR.parent
 
 class Settings(BaseSettings):
     GROQ_API_KEY: str
+    BREVO_API_KEY: str
 
     EMAIL_ADDRESS: str
     EMAIL_PASSWORD: str
