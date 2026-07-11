@@ -3,19 +3,18 @@ import requests
 from langchain_core.tools import tool
 from ..config import settings
 
-
 @tool
 def send_quiz_email(
     receiver_email: str,
     subject: str,
     body: str,
 ):
-    
-    print("========== EMAIL FUNCTION CALLED ==========")
-    print("Receiver:", receiver_email)
     """
     Send an email using Brevo API.
     """
+
+    print("========== EMAIL FUNCTION CALLED ==========")
+    print("Receiver:", receiver_email)
 
     url = "https://api.brevo.com/v3/smtp/email"
 
@@ -39,7 +38,6 @@ def send_quiz_email(
         "textContent": body,
     }
 
-    # 👇 Replace this section
     response = requests.post(
         url,
         json=payload,
