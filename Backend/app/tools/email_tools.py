@@ -3,6 +3,7 @@ import requests
 from langchain_core.tools import tool
 from ..config import settings
 
+
 @tool
 def send_quiz_email(
     receiver_email: str,
@@ -10,18 +11,20 @@ def send_quiz_email(
     body: str,
 ):
     """
-    Send an email using Brevo API.
+    Send an email using the Brevo Transactional Email API.
     """
 
-    print("========== EMAIL FUNCTION CALLED ==========")
+    print("\n========== EMAIL FUNCTION CALLED ==========")
     print("Receiver:", receiver_email)
+    print("Sender:", settings.EMAIL_ADDRESS)
+    print("API Key Exists:", bool(settings.BREVO_API_KEY))
 
     url = "https://api.brevo.com/v3/smtp/email"
 
     headers = {
         "accept": "application/json",
-        "api-key": settings.BREVO_API_KEY,
         "content-type": "application/json",
+        "api-key": settings.BREVO_API_KEY,
     }
 
     payload = {
@@ -31,26 +34,44 @@ def send_quiz_email(
         },
         "to": [
             {
-                "email": receiver_email,
+                "email": receiver_email
             }
         ],
         "subject": subject,
         "textContent": body,
     }
 
-    response = requests.post(
-        url,
-        json=payload,
-        headers=headers,
-        timeout=30,
-    )
+    print("\nPayload:")
+    print(payload)
 
-    print("Status:", response.status_code)
-    print("Response:", response.text)
-
-    if response.status_code not in [200, 201]:
-        raise Exception(
-            f"Brevo Error: {response.status_code} - {response.text}"
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=30,
         )
 
-    return f"Email sent successfully to {receiver_email}"
+        print("\n========== BREVO RESPONSE ==========")
+        print("Status Code:", response.status_code)
+        print("Response Body:", response.text)
+        print("===================================\n")
+
+        response.raise_for_status()
+
+        return {
+            "success": True,
+            "response": response.json(),
+        }
+
+    except Exception as e:
+        print("\n========== EMAIL ERROR ==========")
+        print(str(e))
+
+        if "response" in locals():
+            print("Status:", response.status_code)
+            print("Body:", response.text)
+
+        print("=================================\n")
+
+        raise
