@@ -1,77 +1,104 @@
-import requests
-
-from langchain_core.tools import tool
-from ..config import settings
-
-
-@tool
-def send_quiz_email(
-    receiver_email: str,
-    subject: str,
-    body: str,
+@router.post("/assign_quiz")
+def assign_quiz(
+    data: AssignQuizRequest,
+    db: Session = Depends(get_db),
 ):
-    """
-    Send an email using the Brevo Transactional Email API.
-    """
+    print("\n========== ASSIGN QUIZ START ==========")
 
-    print("\n========== EMAIL FUNCTION CALLED ==========")
-    print("Receiver:", receiver_email)
-    print("Sender:", settings.EMAIL_ADDRESS)
-    print("API Key Exists:", bool(settings.BREVO_API_KEY))
+    quiz_id = data.quiz_id
+    student_emails = data.students
 
-    url = "https://api.brevo.com/v3/smtp/email"
+    print("Quiz ID:", quiz_id)
+    print("Students:", student_emails)
 
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "api-key": settings.BREVO_API_KEY,
-    }
+    quiz = (
+        db.query(Quiz)
+        .filter(Quiz.id == quiz_id)
+        .first()
+    )
 
-    payload = {
-        "sender": {
-            "name": "AI Quiz System",
-            "email": settings.EMAIL_ADDRESS,
-        },
-        "to": [
-            {
-                "email": receiver_email
-            }
-        ],
-        "subject": subject,
-        "textContent": body,
-    }
-
-    print("\nPayload:")
-    print(payload)
-
-    try:
-        response = requests.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=30,
+    if not quiz:
+        print("Quiz not found!")
+        raise HTTPException(
+            status_code=404,
+            detail="Quiz not found",
         )
 
-        print("\n========== BREVO RESPONSE ==========")
-        print("Status Code:", response.status_code)
-        print("Response Body:", response.text)
-        print("===================================\n")
+    sent = 0
 
-        response.raise_for_status()
+    for email in student_emails:
 
-        return {
-            "success": True,
-            "response": response.json(),
-        }
+        print("\n--------------------------------")
+        print("Processing:", email)
 
-    except Exception as e:
-        print("\n========== EMAIL ERROR ==========")
-        print(str(e))
+        quiz_link = (
+            f"{settings.FRONTEND_URL}/quiz/{quiz_id}"
+            f"?email={email}"
+        )
 
-        if "response" in locals():
-            print("Status:", response.status_code)
-            print("Body:", response.text)
+        existing = (
+            db.query(QuizAssignment)
+            .filter(
+                QuizAssignment.quiz_id == quiz_id,
+                QuizAssignment.student_email == email,
+            )
+            .first()
+        )
 
-        print("=================================\n")
+        if existing:
+            print("Assignment already exists. Skipping email.")
+            continue
 
-        raise
+        print("Creating new assignment...")
+
+        assignment = QuizAssignment(
+            student_email=email,
+            quiz_id=quiz_id,
+            status="Assigned",
+        )
+
+        db.add(assignment)
+
+        try:
+            print("Calling send_quiz_email()...")
+
+            result = send_quiz_email.invoke(
+                {
+                    "receiver_email": email,
+                    "subject": "AI Generated Quiz Assigned",
+                    "body": f"""
+Hello Student,
+
+You have been assigned a new quiz.
+
+Quiz:
+{quiz.title}
+
+Attempt your quiz here:
+
+{quiz_link}
+
+Good luck!
+
+AI Quiz System
+""",
+                }
+            )
+
+            print("Email Result:", result)
+
+            sent += 1
+
+        except Exception as e:
+            print("EMAIL ERROR:")
+            print(str(e))
+
+    db.commit()
+
+    print("Emails Sent:", sent)
+    print("========== ASSIGN QUIZ END ==========\n")
+
+    return {
+        "message": "Quiz assigned successfully",
+        "emails_sent": sent,
+    }
