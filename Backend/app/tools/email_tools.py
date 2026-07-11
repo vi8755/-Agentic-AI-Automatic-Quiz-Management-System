@@ -10,6 +10,9 @@ def send_quiz_email(
     subject: str,
     body: str,
 ):
+    
+    print("========== EMAIL FUNCTION CALLED ==========")
+    print("Receiver:", receiver_email)
     """
     Send an email using Brevo API.
     """
