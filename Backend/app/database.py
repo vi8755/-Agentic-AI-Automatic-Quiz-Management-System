@@ -8,10 +8,14 @@ DATABASE_URL = settings.DATABASE_URL
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
         DATABASE_URL,
-        connect_args={"check_same_thread": False},
+        pool_pre_ping=True,
     )
 else:
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+    )
+    print("DATABASE_URL =", DATABASE_URL)
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -20,3 +24,14 @@ SessionLocal = sessionmaker(
 )
 
 Base = declarative_base()
+
+
+# -----------------------------
+# Database Dependency
+# -----------------------------
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

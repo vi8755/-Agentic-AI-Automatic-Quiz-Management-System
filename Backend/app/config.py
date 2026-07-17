@@ -10,6 +10,9 @@ class Settings(BaseSettings):
 
     EMAIL_ADDRESS: str
     EMAIL_PASSWORD: str
+    SECRET_KEY: str
+    ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
 
     DATABASE_URL: str = f"sqlite:///{BACKEND_DIR / 'quiz.db'}"
 
