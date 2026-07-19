@@ -13,7 +13,10 @@ from ..schemas import (
     TeacherResponse,
     TeacherAssignmentsResponse,
 )
-
+from ..models import User, UserRole
+from ..security import require_role
+from ..schemas import TeacherMySectionResponse
+from ..services.teacher_service import get_my_sections
 router = APIRouter(
     prefix="/teachers",
     tags=["Teachers"],
@@ -60,3 +63,27 @@ def get_teacher_assignments_api(
             status_code=404,
             detail=str(e),
         )
+    
+
+@router.get(
+    "/my-sections",
+    response_model=list[TeacherMySectionResponse],
+)
+def my_sections(
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return get_my_sections(
+            db,
+            current_user,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+

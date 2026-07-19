@@ -196,3 +196,20 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+
+class TeacherMySectionResponse(BaseModel):
+    teacher_section_id: int
+
+    section_id: int
+    section_name: str
+    department: str
+    year: int
+    semester: int
+
+    subject_id: int
+    subject_name: str
+
+    academic_year: str
+
+    class Config:
+        from_attributes = True
