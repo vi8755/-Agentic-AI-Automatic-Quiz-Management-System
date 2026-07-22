@@ -1,35 +1,38 @@
-from ..config import settings
-
-from sqlalchemy.orm import Session
-
-from ..tools.email_tools import send_quiz_email
-
-from ..database import SessionLocal
-from io import BytesIO
-import pandas as pd
-from openpyxl import Workbook
-from sqlalchemy.exc import IntegrityError
-
-from fastapi.responses import StreamingResponse
-from ..models import (
-    Quiz,
-    QuizAssignment,
-    Response,
-    Student,
-)
-
 from fastapi import (
     APIRouter,
     Depends,
-    UploadFile,
-    File,
     HTTPException,
 )
-from ..schemas import StudentCreate, AssignQuizRequest,StudentResponse
-from email_validator import validate_email, EmailNotValidError
-router = APIRouter()
 
+from sqlalchemy.orm import Session
 
+from ..database import SessionLocal
+
+from ..models import (
+    User,
+    UserRole,
+)
+from ..security import get_current_user, require_role
+from ..models import User, UserRole
+from ..services.student_service import get_current_student
+
+from ..schemas import (
+    StudentRegistrationCreate,
+    StudentResponse,
+)
+
+from ..security import require_role
+
+from ..services.student_service import (
+    register_student,
+    get_all_students,
+    get_student_by_id,
+)
+
+router = APIRouter(
+    prefix="/students",
+    tags=["Students"],
+)
 def get_db():
     db = SessionLocal()
     try:
@@ -37,291 +40,75 @@ def get_db():
     finally:
         db.close()
 
+ 
 
 
-@router.post("/add",response_model=StudentResponse)
-def add_student(
-    student: StudentCreate,
-    db: Session = Depends(get_db),
-):
-
-    if (
-        not student.name.strip()
-        or not student.roll_no.strip()
-        or not student.department.strip()
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="All fields are required."
-        )
-
-    # ✅ Email validation
-    try:
-        validate_email(student.email)
-    except EmailNotValidError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid email address."
-        )
-
-    existing = (
-        db.query(Student)
-        .filter(Student.email == student.email)
-        .first()
-    )
-
-    if existing:
-        raise HTTPException(
-    status_code=409,
-    detail="Student already exists."
+@router.post(
+    "/register",
+    response_model=StudentResponse,
 )
-
-    new_student = Student(
-        name=student.name,
-        roll_no=student.roll_no,
-        email=student.email,
-        department=student.department,
-    )
-
+def register_student_api(
+    student: StudentRegistrationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.DEAN)
+    ),
+):
     try:
-     db.add(new_student)
-     db.commit()
-     db.refresh(new_student)
+        return register_student(db, student)
 
-    except IntegrityError:
-     db.rollback()
-     raise HTTPException(
-        status_code=409,
-        detail="Student already exists."
-    )
-
-    return {
-        "message": "Student added",
-        "id": new_student.id,
-    }
-
-@router.get("/all")
-def get_students(
-    db: Session = Depends(get_db),
-):
-    return db.query(Student).all()
-
-
-@router.post("/upload_excel")
-async def upload_excel(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
-    contents = await file.read()
-
-    df = pd.read_excel(
-        BytesIO(contents),
-        engine="openpyxl"
-    )
-
-    # Remove extra spaces from column names
-    df.columns = df.columns.str.strip()
-
-    # Remove completely empty rows
-    df = df.dropna(how="all")
-
-    # Clean values
-    df["Name"] = df["Name"].fillna("").astype(str).str.strip()
-    df["Roll No"] = df["Roll No"].fillna("").astype(str).str.strip()
-    df["Email"] = df["Email"].fillna("").astype(str).str.strip()
-    df["Department"] = df["Department"].fillna("").astype(str).str.strip()
-
-    # Remove rows without email
-    df = df[df["Email"] != ""]
-
-    # Convert DataFrame to list of dictionaries
-    students = df.to_dict(orient="records")
-
-    added = 0
-    skipped = 0
-
-    for student in students:
-
-        existing = (
-            db.query(Student)
-            .filter(Student.email == student["Email"])
-            .first()
-        )
-
-        if existing:
-            skipped += 1
-            continue
-
-        db.add(
-            Student(
-                name=student["Name"],
-                roll_no=student["Roll No"],
-                email=student["Email"],
-                department=student["Department"],
-            )
-        )
-
-        added += 1
-
-    db.commit()
-
-    return {
-        "message": "Students uploaded successfully",
-        "added": added,
-        "skipped": skipped,
-    }
-@router.post("/assign_quiz")
-def assign_quiz(
-    data: AssignQuizRequest,
-    db: Session = Depends(get_db),
-):
-    quiz_id = data.quiz_id
-    student_emails = data.students
-
-    quiz = (
-        db.query(Quiz)
-        .filter(Quiz.id == quiz_id)
-        .first()
-    )
-
-    if not quiz:
+    except ValueError as e:
         raise HTTPException(
-            status_code=404,
-            detail="Quiz not found",
+            status_code=400,
+            detail=str(e),
         )
+    
 
-    sent = 0
-
-    for email in student_emails:
-
-        quiz_link = (
-            f"{settings.FRONTEND_URL}/quiz/{quiz_id}"
-            f"?email={email}"
-        )
-
-        existing = (
-            db.query(QuizAssignment)
-            .filter(
-                QuizAssignment.quiz_id == quiz_id,
-                QuizAssignment.student_email == email,
-            )
-            .first()
-        )
-
-        if existing:
-            continue
-
-        assignment = QuizAssignment(
-            student_email=email,
-            quiz_id=quiz_id,
-            status="Assigned",
-        )
-
-        db.add(assignment)
-
-        try:
-            send_quiz_email.invoke(
-                {
-                    "receiver_email": email,
-                    "subject": "AI Generated Quiz Assigned",
-                    "body": f"""
-Hello Student,
-
-You have been assigned a new quiz.
-
-Quiz:
-{quiz.title}
-
-Attempt your quiz here:
-
-{quiz_link}
-
-Good luck!
-
-AI Quiz System
-""",
-                }
-            )
-            sent += 1
-
-        except Exception as e:
-            print(f"Email sending failed for {email}: {e}")
-
-    db.commit()
-
-    return {
-        "message": "Quiz assigned successfully",
-        "emails_sent": sent,
-    }
-@router.get("/assignments")
-def get_assignments(
+@router.get(
+    "/",
+    response_model=list[StudentResponse],
+)
+def get_students_api(
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.DEAN)
+    ),
 ):
-    return db.query(QuizAssignment).all()
+    return get_all_students(db)
 
-@router.get("/download_template")
-def download_template():
+@router.get(
+    "/me",
+    response_model=StudentResponse,
+    dependencies=[Depends(require_role(UserRole.STUDENT))]
+)
+def get_my_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return get_current_student(current_user.id, db)
 
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Students"
-
-    sheet.append([
-        "Name",
-        "Roll No",
-        "Email",
-        "Department"
-    ])
-
-    excel_file = BytesIO()
-
-    workbook.save(excel_file)
-
-    excel_file.seek(0)
-
-    return StreamingResponse(
-        excel_file,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition":
-            "attachment; filename=student_template.xlsx"
-        },
-    )
-
-@router.delete("/delete/{student_id}")
-def delete_student(
+@router.get(
+    "/{student_id}",
+    response_model=StudentResponse,
+)
+def get_student_api(
     student_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.DEAN)
+    ),
 ):
+    try:
+        return get_student_by_id(
+            db,
+            student_id,
+        )
 
-    student = (
-        db.query(Student)
-        .filter(Student.id == student_id)
-        .first()
-    )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+    
 
-    if not student:
-         raise HTTPException(
-    status_code=404,
-    detail="Student not found."
-)
 
-    db.query(QuizAssignment).filter(
-        QuizAssignment.student_email == student.email
-    ).delete()
-
-    db.query(Response).filter(
-        Response.student_email == student.email
-    ).delete()
-
-    db.delete(student)
-
-    db.commit()
-
-    return {
-        "message": "Student deleted successfully"
-    }
-
-@router.get("/check-responses")
-def check_responses(db: Session = Depends(get_db)):
-    return db.query(Response).all()

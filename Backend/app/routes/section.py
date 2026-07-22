@@ -11,6 +11,8 @@ from ..services.section_service import (
     create_section,
     get_section_assignments,
 )
+from ..models import User, UserRole
+from ..security import require_role
 
 router = APIRouter(
     prefix="/sections",
@@ -33,6 +35,10 @@ def get_db():
 def add_section(
     section: SectionCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.DEAN)
+    ),
+
 ):
     return create_section(db, section)
 

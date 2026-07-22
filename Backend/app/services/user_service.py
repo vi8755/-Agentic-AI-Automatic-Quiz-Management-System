@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from ..models import User
 from ..schemas import UserCreate
 from ..security import hash_password
-from sqlalchemy import text
+
 
 def create_user(
     db: Session,
@@ -11,10 +11,26 @@ def create_user(
 ):
     """
     Create a new user.
+
+    This function:
+    - Checks duplicate email
+    - Hashes password
+    - Creates User
+    - Flushes transaction
+    - Returns User object
+
+    NOTE:
+    This function DOES NOT commit.
+    The caller (Teacher/Student service) is responsible
+    for committing or rolling back the transaction.
     """
 
     # Check duplicate email
-    existing_user = None
+    existing_user = (
+        db.query(User)
+        .filter(User.email == user.email)
+        .first()
+    )
 
     if existing_user:
         raise ValueError("Email already exists.")
@@ -22,6 +38,7 @@ def create_user(
     # Hash password
     hashed_password = hash_password(user.password)
 
+    # Create User
     new_user = User(
         name=user.name,
         email=user.email,
@@ -30,8 +47,8 @@ def create_user(
     )
 
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
+
+    # Generate user.id without committing
+    db.flush()
 
     return new_user

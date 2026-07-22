@@ -11,6 +11,8 @@ from ..services.subject_service import (
     create_subject,
     get_subject_assignments,
 )
+from ..models import User, UserRole
+from ..security import require_role
 
 router = APIRouter(
     prefix="/subjects",
@@ -33,6 +35,10 @@ def get_db():
 def add_subject(
     subject: SubjectCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.DEAN)
+    ),
+
 ):
     return create_subject(db, subject)
 

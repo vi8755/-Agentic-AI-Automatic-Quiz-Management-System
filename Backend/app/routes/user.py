@@ -17,32 +17,50 @@ router = APIRouter(
     tags=["Users"],
 )
 
- 
-
 @router.post(
-    "/",
+    "/bootstrap",
     response_model=UserResponse,
 )
-def create_user_api(
+@router.post(
+    "/bootstrap",
+    response_model=UserResponse,
+)
+def bootstrap_dean(
     user: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-    require_role(UserRole.DEAN)
-    ),
 ):
+    existing_users = db.query(User).count()
+
+    if existing_users > 0:
+        raise HTTPException(
+            status_code=403,
+            detail="Bootstrap is disabled. Users already exist."
+        )
+
+    if user.role != UserRole.DEAN:
+        raise HTTPException(
+            status_code=400,
+            detail="First user must be a DEAN."
+        )
+
     try:
-        return create_user(
+        new_user = create_user(
             db,
             user,
         )
 
+        db.commit()          # ✅ IMPORTANT
+        db.refresh(new_user) # ✅ Reload committed data
+
+        return new_user
+
     except ValueError as e:
+        db.rollback()
         raise HTTPException(
             status_code=400,
             detail=str(e),
         )
-
-
+    
 @router.get("/me")
 def get_me(
     current_user: User = Depends(get_current_user),

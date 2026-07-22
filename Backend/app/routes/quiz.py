@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+)
 
 from sqlalchemy.orm import Session
 
@@ -7,7 +11,6 @@ from ..database import SessionLocal
 from ..config import settings
 from ..schemas import QuizCreate, QuizSubmit
 from ..schemas import (
-    StudentCreate,
     AssignQuizRequest,
 )
 
@@ -19,7 +22,17 @@ from ..agent_graph import app
 from ..schemas import GenerateQuizRequest
 from ..tools.quiz_tools import generate_quiz
 from ..tools.web_quiz_tools import create_quiz_web
+from ..models import (
+    Quiz,
+    Response,
+    QuizAssignment,
+    Teacher,
+    User,
+    UserRole,
+    Student,
+)
 
+from ..security import require_role
 
 router = APIRouter()
 
@@ -39,33 +52,35 @@ def get_db():
 
 
 
-
-
 @router.post("/create_quiz")
 def create_quiz(
-
     quiz: QuizCreate,
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
 ):
-
-
-    new_quiz = Quiz(
-
-        title=quiz.title,
-
-        questions=quiz.questions
-
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
     )
 
+    if not teacher:
+        raise HTTPException(
+            status_code=404,
+            detail="Teacher profile not found.",
+        )
+
+    new_quiz = Quiz(
+        title=quiz.title,
+        questions=quiz.questions,
+        teacher_id=teacher.id,
+    )
 
     db.add(new_quiz)
-
     db.commit()
-
     db.refresh(new_quiz)
-
 
 
     return {
@@ -289,26 +304,50 @@ content="check submitted answers and calculate score"
     db.refresh(new_response)
       
 
-    assignment = db.query(
-     QuizAssignment
-     ).filter(
+    # Find the user by email
+    user = (
+    db.query(User)
+    .filter(User.email == data.student_email)
+    .first()
+    )
 
-     QuizAssignment.quiz_id == data.quiz_id,
+    assignment = None
 
-     QuizAssignment.student_email == data.student_email
+    if user:
+    # Find the student's profile
+     student = (
+        db.query(Student)
+        .filter(Student.user_id == user.id)
+        .first()
+    )
 
-     ).first()
+    if student:
+        # Version 2 lookup using student_id
+        assignment = (
+            db.query(QuizAssignment)
+            .filter(
+                QuizAssignment.quiz_id == data.quiz_id,
+                QuizAssignment.student_id == student.id,
+            )
+            .first()
+        )
 
-
+# Fallback for Version 1 assignments
+    if assignment is None:
+     assignment = (
+        db.query(QuizAssignment)
+        .filter(
+            QuizAssignment.quiz_id == data.quiz_id,
+            QuizAssignment.student_email == data.student_email,
+        )
+        .first()
+    )
 
     if assignment:
+     assignment.status = "Completed"
+     assignment.score = score
 
-     assignment.status="Completed"
-
-     assignment.score=score
-
-
-     db.commit()
+    db.commit()
 
 
 

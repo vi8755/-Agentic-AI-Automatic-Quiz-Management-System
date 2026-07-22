@@ -3,7 +3,7 @@ from enum import Enum
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
-
+from .models import UserRole 
 class QuizCreate(BaseModel):
     title: str
     questions: list[Any]
@@ -13,13 +13,6 @@ class QuizSubmit(BaseModel):
     student_email: str
     quiz_id: int
     answers: dict
-
-
-class StudentCreate(BaseModel):
-    name: str
-    roll_no: str
-    email: EmailStr
-    department: str
 
 
 class GenerateQuizRequest(BaseModel):
@@ -35,24 +28,18 @@ class AssignQuizRequest(BaseModel):
 class MessageResponse(BaseModel):
     message: str
 
-
-class StudentResponse(MessageResponse):
-    id: int
-
-class TeacherCreate(BaseModel):
-    user_id: int
-    employee_id: str
-    department: str
-    designation: str
-    phone: Optional[str] = None
-
 class TeacherResponse(BaseModel):
     id: int
     user_id: int
+
+    name: str
+    email: EmailStr
+
     employee_id: str
     department: str
     designation: str
     phone: Optional[str]
+
     is_active: bool
 
     class Config:
@@ -164,11 +151,6 @@ class SubjectAssignmentsResponse(BaseModel):
     semester: int
     assignments: list[SubjectAssignmentItem]
 
-class UserRole(str, Enum):
-    DEAN = "DEAN"
-    TEACHER = "TEACHER"
-    STUDENT = "STUDENT"
-
 
 class UserCreate(BaseModel):
     name: str
@@ -210,6 +192,88 @@ class TeacherMySectionResponse(BaseModel):
     subject_name: str
 
     academic_year: str
+
+    class Config:
+        from_attributes = True
+
+
+class TeacherBase(BaseModel):
+    employee_id: str
+    department: str
+    designation: str
+    phone: Optional[str] = None
+
+class TeacherCreate(TeacherBase):
+    user_id: int
+
+class TeacherRegistrationCreate(TeacherBase):
+    name: str
+    email: EmailStr
+    password: str
+
+
+class StudentRegistrationCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+    roll_no: str
+    section_id: int
+
+class StudentResponse(BaseModel):
+    id: int
+    user_id: int
+
+    name: str
+    email: EmailStr
+
+    roll_no: str
+
+    section_id: int
+    section_name: str
+
+    department: str
+    year: int
+    semester: int
+
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+class AssignQuizSectionRequest(BaseModel):
+    quiz_id: int
+    section_id: int
+    due_date: Optional[datetime] = None
+
+class TeacherDashboardResponse(BaseModel):
+    total_quizzes: int
+    total_assignments: int
+    completed_assignments: int
+    pending_assignments: int
+
+    class Config:
+        from_attributes = True
+
+class TeacherQuizResponse(BaseModel):
+    id: int
+    title: str
+    total_questions: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TeacherQuizAssignmentResponse(BaseModel):
+    assignment_id: int
+    student_id: int | None
+    student_name: str
+    roll_no: str | None
+    email: str
+    status: str
+    score: int | None
+    assigned_at: datetime
+    due_date: datetime | None
 
     class Config:
         from_attributes = True

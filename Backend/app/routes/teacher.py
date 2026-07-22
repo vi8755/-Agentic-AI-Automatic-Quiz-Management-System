@@ -2,26 +2,33 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
-from ..schemas import TeacherCreate, TeacherResponse
-from ..services.teacher_service import create_teacher
-from ..services.teacher_service import (
-    create_teacher,
-    get_teacher_assignments,
-)
-from ..schemas import (
-    TeacherCreate,
-    TeacherResponse,
-    TeacherAssignmentsResponse,
-)
 from ..models import User, UserRole
 from ..security import require_role
-from ..schemas import TeacherMySectionResponse
-from ..services.teacher_service import get_my_sections
+
+from ..schemas import (
+    TeacherCreate,
+    TeacherRegistrationCreate,
+    TeacherResponse,
+    TeacherAssignmentsResponse,
+    TeacherMySectionResponse,
+    TeacherDashboardResponse,
+    TeacherQuizResponse,
+    TeacherQuizAssignmentResponse,
+)
+from ..services.teacher_service import (
+    create_teacher,
+    register_teacher,
+    get_teacher_assignments,
+    get_my_sections,
+    get_teacher_dashboard,
+    get_teacher_quizzes,
+    get_quiz_assignments,
+)
+
 router = APIRouter(
     prefix="/teachers",
     tags=["Teachers"],
 )
-
 def get_db():
     db = SessionLocal()
     try:
@@ -30,23 +37,7 @@ def get_db():
         db.close()
 
 
-@router.post(
-    "/",
-    response_model=TeacherResponse,
-)
-def create_teacher_api(
-    teacher: TeacherCreate,
-    db: Session = Depends(get_db),
-):
-    try:
-        return create_teacher(db, teacher)
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
-
+ 
 @router.get(
     "/{teacher_id}/assignments",
     response_model=TeacherAssignmentsResponse,
@@ -87,3 +78,91 @@ def my_sections(
             detail=str(e),
         )
 
+@router.get(
+    "/dashboard",
+    response_model=TeacherDashboardResponse,
+)
+def teacher_dashboard(
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return get_teacher_dashboard(
+            db,
+            current_user,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+@router.post(
+    "/register",
+    response_model=TeacherResponse,
+)
+def register_teacher_api(
+    teacher: TeacherRegistrationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.DEAN)
+    ),
+):
+    try:
+        return register_teacher(db, teacher)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+@router.get(
+    "/quizzes",
+    response_model=list[TeacherQuizResponse],
+)
+def teacher_quizzes(
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return get_teacher_quizzes(
+            db,
+            current_user,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+@router.get(
+    "/quizzes/{quiz_id}/assignments",
+    response_model=list[TeacherQuizAssignmentResponse],
+)
+def teacher_quiz_assignments(
+    quiz_id: int,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return get_quiz_assignments(
+            db,
+            current_user,
+            quiz_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+    
