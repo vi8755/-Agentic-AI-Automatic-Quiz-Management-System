@@ -6,7 +6,8 @@ import StudentDetails from "./pages/StudentDetails";
 import StudentManagement from "./components/StudentManagement";
 import GenerateQuiz from "./pages/GenerateQuiz";
 import Home from "./pages/Home";
- 
+import Login from "./pages/Login";
+import ProtectedRoute from "./components/common/ProtectedRoute";
 
 
 function App(){
@@ -43,6 +44,7 @@ element={<StudentManagement/>}
     element={<GenerateQuiz />}
 />
 <Route path="/" element={<Home />} />
+<Route path="/login" element={<Login />} />
 
       </Routes>
 
