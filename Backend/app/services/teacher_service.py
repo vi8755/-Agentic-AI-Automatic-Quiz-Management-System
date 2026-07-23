@@ -11,7 +11,7 @@ from ..schemas import (
     TeacherMySectionResponse,
     UserRole
 )
-from sqlalchemy import func
+from sqlalchemy import and_, func
 
 from ..models import (
     Teacher,
@@ -19,6 +19,7 @@ from ..models import (
     QuizAssignment,
     Student,
     User,
+    Section,
 )
 from ..models import Teacher, Quiz, User
 
@@ -370,3 +371,185 @@ def get_quiz_assignments(
         )
 
     return result
+
+
+def get_teacher_analytics(
+    db: Session,
+    teacher_id: int,
+):
+    # Total quizzes created by teacher
+    total_quizzes = (
+        db.query(Quiz)
+        .filter(Quiz.teacher_id == teacher_id)
+        .count()
+    )
+
+    # Total assignments
+    total_assignments = (
+        db.query(QuizAssignment)
+        .filter(QuizAssignment.teacher_id == teacher_id)
+        .count()
+    )
+
+    # Completed assignments
+    completed_assignments = (
+        db.query(QuizAssignment)
+        .filter(
+            QuizAssignment.teacher_id == teacher_id,
+            QuizAssignment.status == "Completed",
+        )
+        .count()
+    )
+
+    # Total unique students
+    total_students = (
+        db.query(func.count(func.distinct(QuizAssignment.student_id)))
+        .filter(
+            QuizAssignment.teacher_id == teacher_id
+        )
+        .scalar()
+        or 0
+    )
+
+    # Score statistics
+    score_stats = (
+        db.query(
+            func.avg(QuizAssignment.score),
+            func.max(QuizAssignment.score),
+            func.min(QuizAssignment.score),
+        )
+        .filter(
+            QuizAssignment.teacher_id == teacher_id,
+            QuizAssignment.status == "Completed",
+            QuizAssignment.score.isnot(None),
+        )
+        .first()
+    )
+
+    average_score = round(score_stats[0], 2) if score_stats[0] else 0
+    highest_score = score_stats[1] or 0
+    lowest_score = score_stats[2] or 0
+
+    completion_percentage = (
+        round(
+            (completed_assignments / total_assignments) * 100,
+            2,
+        )
+        if total_assignments
+        else 0
+    )
+
+    return {
+        "average_score": average_score,
+        "highest_score": highest_score,
+        "lowest_score": lowest_score,
+        "completion_percentage": completion_percentage,
+        "total_quizzes": total_quizzes,
+        "total_students": total_students,
+        "total_attempts": completed_assignments,
+    }
+
+
+def get_quiz_performance(
+    db: Session,
+    teacher_id: int,
+):
+    """
+    Returns quiz-wise analytics for the logged-in teacher.
+    Includes quizzes with zero completed attempts.
+    """
+
+    results = (
+        db.query(
+            Quiz.id.label("quiz_id"),
+            Quiz.title.label("quiz_title"),
+            func.avg(QuizAssignment.score).label("average_score"),
+            func.count(QuizAssignment.id).label("attempts"),
+        )
+        .outerjoin(
+            QuizAssignment,
+            and_(
+                Quiz.id == QuizAssignment.quiz_id,
+                QuizAssignment.status == "Completed",
+            ),
+        )
+        .filter(
+            Quiz.teacher_id == teacher_id,
+        )
+        .group_by(
+            Quiz.id,
+            Quiz.title,
+        )
+        .order_by(
+            Quiz.id.desc(),
+        )
+        .all()
+    )
+
+    return [
+        {
+            "quiz_id": row.quiz_id,
+            "quiz_title": row.quiz_title,
+            "average_score": (
+                round(float(row.average_score), 2)
+                if row.average_score is not None
+                else 0
+            ),
+            "attempts": row.attempts,
+        }
+        for row in results
+    ]
+
+
+
+def get_section_performance(
+    db: Session,
+    teacher_id: int,
+):
+    """
+    Returns section-wise analytics for the logged-in teacher.
+    Includes sections with zero completed attempts.
+    """
+
+    results = (
+        db.query(
+            Section.id.label("section_id"),
+            Section.section_name.label("section_name"),
+            func.avg(QuizAssignment.score).label("average_score"),
+            func.count(QuizAssignment.id).label("attempts"),
+            func.count(
+                func.distinct(QuizAssignment.student_id)
+            ).label("students"),
+        )
+        .outerjoin(
+            QuizAssignment,
+            and_(
+                Section.id == QuizAssignment.section_id,
+                QuizAssignment.teacher_id == teacher_id,
+                QuizAssignment.status == "Completed",
+            ),
+        )
+        .group_by(
+            Section.id,
+            Section.section_name,
+        )
+        .order_by(
+            Section.section_name,
+        )
+        .all()
+    )
+
+    return [
+        {
+            "section_id": row.section_id,
+            "section_name": row.section_name,
+            "average_score": (
+                round(float(row.average_score), 2)
+                if row.average_score is not None
+                else 0
+            ),
+            "attempts": row.attempts,
+            "students": row.students,
+        }
+        for row in results
+    ]
