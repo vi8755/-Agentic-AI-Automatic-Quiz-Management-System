@@ -4,6 +4,8 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
 from .models import UserRole 
+from typing import List
+
 class QuizCreate(BaseModel):
     title: str
     questions: list[Any]
@@ -254,11 +256,11 @@ class TeacherDashboardResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 class TeacherQuizResponse(BaseModel):
     id: int
     title: str
     total_questions: int
+    status: str
     created_at: datetime
 
     class Config:
@@ -277,3 +279,92 @@ class TeacherQuizAssignmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+ 
+class QuestionCreate(BaseModel):
+    question_text: str
+
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+
+    correct_answer: str
+
+    explanation: Optional[str] = None
+
+    marks: int = 1
+
+    question_order: int
+
+
+
+class QuestionResponse(BaseModel):
+    id: int
+
+    quiz_id: int
+
+    question_text: str
+
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+
+    correct_answer: str
+
+    explanation: Optional[str]
+
+    marks: int
+
+    question_order: int
+
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class QuestionUpdate(BaseModel):
+    id: Optional[int] = None
+
+    question_text: str
+
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+
+    correct_answer: str
+
+    explanation: Optional[str] = None
+
+    marks: int = 1
+
+    question_order: int
+
+
+class UpdateQuizRequest(BaseModel):
+    title: str
+
+    questions: List[QuestionUpdate]
+
+    deleted_question_ids: List[int] = []
+
+class QuizWithQuestionsResponse(BaseModel):
+    id: int
+
+    title: str
+
+    teacher_id: Optional[int]
+
+    status: str
+
+    created_at: datetime
+
+    questions: list[QuestionResponse]
+
+    class Config:
+        from_attributes = True
+ 
+ 
+ 
+

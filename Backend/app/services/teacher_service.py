@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
 from ..models import User, Teacher, TeacherSection
-
+from sqlalchemy import func
 from ..schemas import (
     TeacherCreate,
     TeacherRegistrationCreate,
@@ -9,7 +9,9 @@ from ..schemas import (
     TeacherAssignmentsResponse,
     TeacherAssignmentItem,
     TeacherMySectionResponse,
-    UserRole
+    UserRole,
+    UpdateQuizRequest
+    
 )
 from sqlalchemy import and_, func
 
@@ -17,15 +19,18 @@ from ..models import (
     Teacher,
     Quiz,
     QuizAssignment,
+    Question,
     Student,
     User,
     Section,
 )
 from ..models import Teacher, Quiz, User
-
+from app.models import Quiz, Question, Teacher
+from copy import deepcopy
 from ..security import hash_password
 from ..services.user_service import create_user
 from ..schemas import UserCreate
+from ..models import Quiz, Teacher, Question
 def create_teacher(db: Session, teacher: TeacherCreate):
     """
     Create a new teacher profile.
@@ -299,18 +304,23 @@ def get_teacher_quizzes(
             {
                 "id": quiz.id,
                 "title": quiz.title,
-                "total_questions": len(quiz.questions or []),
+                "total_questions": len(quiz.questions_relation),
+                "status": quiz.status,
                 "created_at": quiz.created_at,
             }
         )
 
     return result
 
-def get_quiz_assignments(
+def get_teacher_quiz_by_id(
     db: Session,
     current_user: User,
     quiz_id: int,
 ):
+    """
+    Returns a single quiz created by the logged-in teacher.
+    """
+
     teacher = (
         db.query(Teacher)
         .filter(Teacher.user_id == current_user.id)
@@ -330,49 +340,16 @@ def get_quiz_assignments(
     )
 
     if not quiz:
-        raise ValueError("Quiz not found or access denied.")
+        raise ValueError("Quiz not found.")
 
-    assignments = (
-        db.query(QuizAssignment)
-        .filter(QuizAssignment.quiz_id == quiz.id)
-        .all()
-    )
-
-    result = []
-
-    for assignment in assignments:
-
-        student = assignment.student
-
-        result.append(
-            {
-                "assignment_id": assignment.id,
-                "student_id": student.id if student else None,
-                "student_name": (
-                    student.user.name
-                    if student and student.user
-                    else assignment.student_email
-                ),
-                "roll_no": (
-                    student.roll_no
-                    if student
-                    else None
-                ),
-                "email": (
-                    student.user.email
-                    if student and student.user
-                    else assignment.student_email
-                ),
-                "status": assignment.status,
-                "score": assignment.score,
-                "assigned_at": assignment.assigned_at,
-                "due_date": assignment.due_date,
-            }
-        )
-
-    return result
-
-
+    return {
+        "id": quiz.id,
+        "title": quiz.title,
+        "teacher_id": quiz.teacher_id,
+        "status": quiz.status,
+        "created_at": quiz.created_at,
+        "questions": quiz.questions_relation,
+    }
 def get_teacher_analytics(
     db: Session,
     teacher_id: int,
@@ -450,55 +427,71 @@ def get_teacher_analytics(
     }
 
 
-def get_quiz_performance(
+def get_quiz_assignments(
     db: Session,
-    teacher_id: int,
+    current_user: User,
+    quiz_id: int,
 ):
-    """
-    Returns quiz-wise analytics for the logged-in teacher.
-    Includes quizzes with zero completed attempts.
-    """
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
+    )
 
-    results = (
-        db.query(
-            Quiz.id.label("quiz_id"),
-            Quiz.title.label("quiz_title"),
-            func.avg(QuizAssignment.score).label("average_score"),
-            func.count(QuizAssignment.id).label("attempts"),
-        )
-        .outerjoin(
-            QuizAssignment,
-            and_(
-                Quiz.id == QuizAssignment.quiz_id,
-                QuizAssignment.status == "Completed",
-            ),
-        )
+    if not teacher:
+        raise ValueError("Teacher not found.")
+
+    quiz = (
+        db.query(Quiz)
         .filter(
-            Quiz.teacher_id == teacher_id,
+            Quiz.id == quiz_id,
+            Quiz.teacher_id == teacher.id,
         )
-        .group_by(
-            Quiz.id,
-            Quiz.title,
-        )
-        .order_by(
-            Quiz.id.desc(),
-        )
+        .first()
+    )
+
+    if not quiz:
+        raise ValueError("Quiz not found or access denied.")
+
+    assignments = (
+        db.query(QuizAssignment)
+        .filter(QuizAssignment.quiz_id == quiz.id)
         .all()
     )
 
-    return [
-        {
-            "quiz_id": row.quiz_id,
-            "quiz_title": row.quiz_title,
-            "average_score": (
-                round(float(row.average_score), 2)
-                if row.average_score is not None
-                else 0
-            ),
-            "attempts": row.attempts,
-        }
-        for row in results
-    ]
+    result = []
+
+    for assignment in assignments:
+
+        student = assignment.student
+
+        result.append(
+            {
+                "assignment_id": assignment.id,
+                "student_id": student.id if student else None,
+                "student_name": (
+                    student.user.name
+                    if student and student.user
+                    else assignment.student_email
+                ),
+                "roll_no": (
+                    student.roll_no
+                    if student
+                    else None
+                ),
+                "email": (
+                    student.user.email
+                    if student and student.user
+                    else assignment.student_email
+                ),
+                "status": assignment.status,
+                "score": assignment.score,
+                "assigned_at": assignment.assigned_at,
+                "due_date": assignment.due_date,
+            }
+        )
+
+    return result
 
 
 
@@ -553,3 +546,384 @@ def get_section_performance(
         }
         for row in results
     ]
+
+def get_recent_quiz_activity(
+    db: Session,
+    teacher_id: int,
+):
+    quizzes = (
+        db.query(Quiz)
+        .filter(Quiz.teacher_id == teacher_id)
+        .order_by(Quiz.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    return [
+        {
+            "id": quiz.id,
+            "title": quiz.title,
+            "created_at": quiz.created_at,
+            "questions": len(quiz.questions_relation),
+        }
+        for quiz in quizzes
+    ]
+
+def update_teacher_quiz(
+    db: Session,
+    current_user: User,
+    quiz_id: int,
+    quiz_data: UpdateQuizRequest,
+):
+    # Find logged-in teacher
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
+    )
+
+    if not teacher:
+        raise ValueError("Teacher not found.")
+
+    # Find quiz
+    quiz = (
+        db.query(Quiz)
+        .filter(
+            Quiz.id == quiz_id,
+            Quiz.teacher_id == teacher.id,
+        )
+        .first()
+    )
+
+    if not quiz:
+        raise ValueError("Quiz not found.")
+
+    # Update quiz title
+    quiz.title = quiz_data.title
+
+    # Existing questions dictionary
+    existing_questions = {
+        q.id: q
+        for q in quiz.questions_relation
+    }
+
+    # -----------------------------
+    # Delete removed questions
+    # -----------------------------
+    for question_id in quiz_data.deleted_question_ids:
+        question = existing_questions.get(question_id)
+
+        if question:
+            db.delete(question)
+
+    # -----------------------------
+    # Update existing / Add new
+    # -----------------------------
+    for question_data in quiz_data.questions:
+
+        # Existing question
+        if question_data.id:
+
+            question = existing_questions.get(question_data.id)
+
+            if not question:
+                continue
+
+            question.question_text = question_data.question_text
+            question.option_a = question_data.option_a
+            question.option_b = question_data.option_b
+            question.option_c = question_data.option_c
+            question.option_d = question_data.option_d
+            question.correct_answer = question_data.correct_answer
+            question.explanation = question_data.explanation
+            question.marks = question_data.marks
+            question.question_order = question_data.question_order
+
+        # New question
+        else:
+
+            new_question = Question(
+                quiz_id=quiz.id,
+                question_text=question_data.question_text,
+                option_a=question_data.option_a,
+                option_b=question_data.option_b,
+                option_c=question_data.option_c,
+                option_d=question_data.option_d,
+                correct_answer=question_data.correct_answer,
+                explanation=question_data.explanation,
+                marks=question_data.marks,
+                question_order=question_data.question_order,
+            )
+
+            db.add(new_question)
+
+    # Flush pending changes
+    db.flush()
+
+    # -----------------------------
+    # Normalize question order
+    # -----------------------------
+    questions = (
+        db.query(Question)
+        .filter(Question.quiz_id == quiz.id)
+        .order_by(Question.question_order)
+        .all()
+    )
+
+    for index, question in enumerate(questions, start=1):
+        question.question_order = index
+
+    db.commit()
+    db.refresh(quiz)
+
+    return {
+        "message": "Quiz updated successfully",
+        "quiz": quiz,
+    }
+def delete_teacher_quiz(
+    db: Session,
+    current_user: User,
+    quiz_id: int,
+):
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
+    )
+
+    if not teacher:
+        raise ValueError("Teacher not found.")
+
+    quiz = (
+        db.query(Quiz)
+        .filter(Quiz.id == quiz_id)
+        .first()
+    )
+
+    if not quiz:
+        raise ValueError("Quiz not found.")
+
+    if quiz.teacher_id != teacher.id:
+        raise PermissionError(
+            "You are not allowed to delete this quiz."
+        )
+
+    # Delete all assignments first
+    (
+        db.query(QuizAssignment)
+        .filter(QuizAssignment.quiz_id == quiz.id)
+        .delete(synchronize_session=False)
+    )
+
+    # Delete the quiz
+    db.delete(quiz)
+
+    db.commit()
+
+    return {
+        "message": "Quiz deleted successfully"
+    }
+
+def duplicate_teacher_quiz(
+    db: Session,
+    current_user: User,
+    quiz_id: int,
+):
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
+    )
+
+    if not teacher:
+        raise ValueError("Teacher not found.")
+
+    quiz = (
+        db.query(Quiz)
+        .filter(Quiz.id == quiz_id)
+        .first()
+    )
+
+    if not quiz:
+        raise ValueError("Quiz not found.")
+
+    if quiz.teacher_id != teacher.id:
+        raise PermissionError(
+            "You are not allowed to duplicate this quiz."
+        )
+
+    # Create new quiz
+    new_quiz = Quiz(
+        title=f"{quiz.title} (Copy)",
+        teacher_id=teacher.id,
+        status="Draft",
+    )
+
+    db.add(new_quiz)
+
+    # Generate new quiz ID
+    db.flush()
+
+    # Copy all questions
+    for question in quiz.questions_relation:
+
+        new_question = Question(
+            quiz_id=new_quiz.id,
+
+            question_text=question.question_text,
+
+            option_a=question.option_a,
+            option_b=question.option_b,
+            option_c=question.option_c,
+            option_d=question.option_d,
+
+            correct_answer=question.correct_answer,
+
+            explanation=question.explanation,
+
+            marks=question.marks,
+
+            question_order=question.question_order,
+        )
+
+        db.add(new_question)
+
+    db.commit()
+    db.refresh(new_quiz)
+
+    return {
+        "message": "Quiz duplicated successfully",
+        "quiz": {
+            "id": new_quiz.id,
+            "title": new_quiz.title,
+        },
+    }
+def get_quiz_performance(
+    db: Session,
+    teacher_id: int,
+):
+    quizzes = (
+        db.query(Quiz)
+        .filter(Quiz.teacher_id == teacher_id)
+        .all()
+    )
+
+    result = []
+
+    for quiz in quizzes:
+        assignments = (
+            db.query(QuizAssignment)
+            .filter(
+                QuizAssignment.quiz_id == quiz.id,
+                QuizAssignment.status == "Completed",
+            )
+            .all()
+        )
+
+        scores = [
+            a.score
+            for a in assignments
+            if a.score is not None
+        ]
+
+        result.append(
+            {
+                "quiz_id": quiz.id,
+                "title": quiz.title,
+                "attempts": len(assignments),
+                "average_score": round(sum(scores) / len(scores), 2)
+                if scores
+                else 0,
+            }
+        )
+
+    return result
+def publish_teacher_quiz(
+    db: Session,
+    current_user: User,
+    quiz_id: int,
+):
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
+    )
+
+    if not teacher:
+        raise ValueError("Teacher not found.")
+
+    quiz = (
+        db.query(Quiz)
+        .filter(Quiz.id == quiz_id)
+        .first()
+    )
+
+    if not quiz:
+        raise ValueError("Quiz not found.")
+
+    if quiz.teacher_id != teacher.id:
+        raise PermissionError(
+            "You are not allowed to publish this quiz."
+        )
+
+    quiz.status = "Published"
+
+    db.commit()
+    db.refresh(quiz)
+
+    return {
+        "message": "Quiz published successfully",
+        "quiz": {
+            "id": quiz.id,
+            "status": quiz.status,
+        },
+    }
+def move_quiz_to_draft(
+    db: Session,
+    current_user: User,
+    quiz_id: int,
+):
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
+    )
+
+    if not teacher:
+        raise ValueError("Teacher not found.")
+
+    quiz = (
+        db.query(Quiz)
+        .filter(Quiz.id == quiz_id)
+        .first()
+    )
+
+    if not quiz:
+        raise ValueError("Quiz not found.")
+
+    if quiz.teacher_id != teacher.id:
+        raise PermissionError(
+            "You are not allowed to modify this quiz."
+        )
+
+    if quiz.status == "Draft":
+        return {
+            "message": "Quiz is already in Draft.",
+            "quiz": {
+                "id": quiz.id,
+                "status": quiz.status,
+            },
+        }
+
+    quiz.status = "Draft"
+
+    db.commit()
+    db.refresh(quiz)
+
+    return {
+        "message": "Quiz moved to Draft successfully",
+        "quiz": {
+            "id": quiz.id,
+            "status": quiz.status,
+        },
+    }

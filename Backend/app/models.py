@@ -147,11 +147,17 @@ class Quiz(Base):
 
     questions = Column(JSON)
 
-    # NEW
     teacher_id = Column(
         Integer,
         ForeignKey("teachers.id"),
-        nullable=True,   # Keep nullable so Version 1 quizzes remain valid
+        nullable=True,
+    )
+
+    # NEW
+    status = Column(
+        String,
+        default="Draft",
+        nullable=False,
     )
 
     created_at = Column(
@@ -164,13 +170,93 @@ class Quiz(Base):
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
     )
+
     teacher = relationship(
-    "Teacher",
-    back_populates="quizzes",
+        "Teacher",
+        back_populates="quizzes",
     )
-    assignments = relationship("QuizAssignment", back_populates="quiz")
+
+    questions_relation = relationship(
+    "Question",
+    back_populates="quiz",
+    cascade="all, delete-orphan",
+    order_by="Question.question_order",
+    )
+
+    assignments = relationship(
+    "QuizAssignment",
+    back_populates="quiz",
+    )
+class Question(Base):
+    __tablename__ = "questions"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    quiz_id = Column(
+        Integer,
+        ForeignKey("quiz.id"),
+        nullable=False,
+    )
+
+    question_text = Column(
+        String,
+        nullable=False,
+    )
+
+    option_a = Column(
+        String,
+        nullable=False,
+    )
+
+    option_b = Column(
+        String,
+        nullable=False,
+    )
+
+    option_c = Column(
+        String,
+        nullable=False,
+    )
+
+    option_d = Column(
+        String,
+        nullable=False,
+    )
+
+    correct_answer = Column(
+        String,
+        nullable=False,
+    )
+
+    explanation = Column(
+        String,
+        nullable=True,
+    )
+
+    marks = Column(
+        Integer,
+        default=1,
+    )
+
+    question_order = Column(
+        Integer,
+        nullable=False,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+    )
 
 
+    quiz = relationship(
+        "Quiz",
+        back_populates="questions_relation",
+    )
 class Response(Base):
     __tablename__ = "responses"
 

@@ -14,6 +14,9 @@ from ..schemas import (
     TeacherDashboardResponse,
     TeacherQuizResponse,
     TeacherQuizAssignmentResponse,
+    UpdateQuizRequest,
+    QuizWithQuestionsResponse,
+
 )
 from ..services.teacher_service import (
     create_teacher,
@@ -26,8 +29,15 @@ from ..services.teacher_service import (
     get_teacher_analytics,
     get_quiz_performance,
     get_section_performance,
+    get_teacher_quiz_by_id,
+    get_recent_quiz_activity,
+    update_teacher_quiz,
+    delete_teacher_quiz,
+    duplicate_teacher_quiz,
+    publish_teacher_quiz,
+    move_quiz_to_draft,
 )
-
+ 
 router = APIRouter(
     prefix="/teachers",
     tags=["Teachers"],
@@ -242,3 +252,181 @@ def teacher_section_performance(
         db,
         teacher.id,
     )
+
+@router.get("/quizzes/{quiz_id}",response_model=QuizWithQuestionsResponse,)
+def teacher_quiz_details(
+    quiz_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+):
+    try:
+        return get_teacher_quiz_by_id(
+            db,
+            current_user,
+            quiz_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+@router.get("/analytics/recent-quizzes")
+def teacher_recent_quizzes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+):
+    teacher = (
+        db.query(Teacher)
+        .filter(Teacher.user_id == current_user.id)
+        .first()
+    )
+
+    if not teacher:
+        raise HTTPException(
+            status_code=404,
+            detail="Teacher not found",
+        )
+
+    return get_recent_quiz_activity(
+        db,
+        teacher.id,
+    )
+@router.put("/quizzes/{quiz_id}")
+def edit_teacher_quiz(
+    quiz_id: int,
+    quiz_data: UpdateQuizRequest,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return update_teacher_quiz(
+            db,
+            current_user,
+            quiz_id,
+            quiz_data,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+@router.delete("/quizzes/{quiz_id}")
+def delete_quiz(
+    quiz_id: int,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return delete_teacher_quiz(
+            db,
+            current_user,
+            quiz_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=403,
+            detail=str(e),
+        )
+
+@router.post("/quizzes/{quiz_id}/duplicate")
+def duplicate_quiz(
+    quiz_id: int,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return duplicate_teacher_quiz(
+            db,
+            current_user,
+            quiz_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=403,
+            detail=str(e),
+        )
+
+@router.patch("/quizzes/{quiz_id}/publish")
+def publish_quiz(
+    quiz_id: int,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return publish_teacher_quiz(
+            db,
+            current_user,
+            quiz_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=403,
+            detail=str(e),
+        )
+
+@router.patch("/quizzes/{quiz_id}/draft")
+def draft_quiz(
+    quiz_id: int,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return move_quiz_to_draft(
+            db,
+            current_user,
+            quiz_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
+
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=403,
+            detail=str(e),
+        )
+
+
+    

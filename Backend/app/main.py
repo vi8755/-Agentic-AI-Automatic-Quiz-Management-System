@@ -17,6 +17,7 @@ from .routes import subject
 from .routes import teacher_section
 from .routes import user
 from .routes import auth
+from .routes import teacher_ai
 
 Base.metadata.create_all(bind=engine)
 
@@ -52,7 +53,11 @@ app.include_router(
     prefix="/admin",
 )
  
-
+app.include_router(
+    teacher_ai.router,
+    prefix="/teachers/ai",
+    tags=["Teacher AI"],
+)
 app.include_router(section.router)
 app.include_router(teacher.router) 
 app.include_router(subject.router)
