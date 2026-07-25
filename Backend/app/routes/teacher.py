@@ -36,6 +36,7 @@ from ..services.teacher_service import (
     duplicate_teacher_quiz,
     publish_teacher_quiz,
     move_quiz_to_draft,
+    regenerate_teacher_question,
 )
  
 router = APIRouter(
@@ -429,4 +430,27 @@ def draft_quiz(
         )
 
 
-    
+@router.post(
+    "/quizzes/{quiz_id}/questions/{question_id}/regenerate"
+)
+def regenerate_question_api(
+    quiz_id: int,
+    question_id: int,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        return regenerate_teacher_question(
+            db,
+            current_user,
+            quiz_id,
+            question_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )

@@ -13,6 +13,10 @@ from ..schemas import (
     UpdateQuizRequest
     
 )
+from app.models import Question
+from app.agents.regenerate_question.graph import (
+    regenerate_question_graph,
+)
 from sqlalchemy import and_, func
 
 from ..models import (
@@ -927,3 +931,81 @@ def move_quiz_to_draft(
             "status": quiz.status,
         },
     }
+
+def regenerate_teacher_question(
+    db: Session,
+    current_user: User,
+    quiz_id: int,
+    question_id: int,
+):
+    teacher = (
+    db.query(Teacher)
+    .filter(
+        Teacher.user_id == current_user.id
+    )
+    .first()
+)
+
+    if not teacher:
+     raise ValueError("Teacher not found.")
+    quiz = (
+    db.query(Quiz)
+    .filter(
+        Quiz.id == quiz_id,
+        Quiz.teacher_id == teacher.id,
+    )
+    .first()
+)
+
+    if not quiz:
+     raise ValueError("Quiz not found.")
+    question = (
+    db.query(Question)
+    .filter(
+        Question.id == question_id,
+        Question.quiz_id == quiz.id,
+    )
+    .first()
+)
+
+    if not question:
+     raise ValueError("Question not found.")
+    question_data = {
+    "question_text": question.question_text,
+    "option_a": question.option_a,
+    "option_b": question.option_b,
+    "option_c": question.option_c,
+    "option_d": question.option_d,
+    "correct_answer": question.correct_answer,
+    "explanation": question.explanation,
+
+    
+}
+    result = regenerate_question_graph.invoke(
+    {
+        "question": question_data,
+        "quiz_title": quiz.title,
+        "existing_questions": ...
+    }
+)
+    new_question = result["validated_question"]
+    question.question_text = new_question["question"]
+
+    question.option_a = new_question["options"][0]
+
+    question.option_b = new_question["options"][1]
+
+    question.option_c = new_question["options"][2]
+
+    question.option_d = new_question["options"][3]
+
+    question.correct_answer = new_question["correct_answer"]
+
+    question.explanation = new_question["explanation"]
+    db.commit()
+
+    db.refresh(question)
+    return {
+    "message": "Question regenerated successfully.",
+    "question": question,
+}

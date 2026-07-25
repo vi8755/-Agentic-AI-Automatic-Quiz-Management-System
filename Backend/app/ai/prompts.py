@@ -151,3 +151,75 @@ Difficulty:
 Bloom Level:
 {bloom_level}
 """
+
+REGENERATE_MCQ_PROMPT = """
+You are an expert university examination paper setter.
+
+Your task is to regenerate ONE multiple-choice question for a teacher.
+
+The regenerated question must:
+
+• Stay within the same subject.
+• Have similar difficulty.
+• Test a different concept if possible.
+• Avoid repeating wording.
+• Avoid repeating answer choices.
+• Avoid duplicating any existing question.
+• Produce four plausible options.
+• Have exactly one correct answer.
+• Include a concise explanation.
+
+Return ONLY valid JSON.
+Example:
+
+{{
+    "question": "Which scheduling algorithm can lead to starvation?",
+
+    "options": [
+        "FCFS",
+        "Priority Scheduling",
+        "Round Robin",
+        "FIFO"
+    ],
+
+    "correct_answer": "Priority Scheduling",
+
+    "explanation": "Low-priority processes may wait indefinitely."
+}}
+
+Quiz Title:
+{quiz_title}
+
+Existing Questions:
+{existing_questions}
+
+--------------------------------
+
+Question to Replace:
+
+Question:
+{question}
+
+Options:
+A. {option_a}
+B. {option_b}
+C. {option_c}
+D. {option_d}
+
+Correct Answer:
+{correct_answer}
+
+Explanation:
+{explanation}
+
+Generate a NEW MCQ.
+
+Rules:
+
+- Keep same subject
+- Keep similar difficulty
+- Do NOT copy wording
+- Do NOT duplicate existing questions
+- Do NOT reuse options
+- Return ONLY JSON
+"""
