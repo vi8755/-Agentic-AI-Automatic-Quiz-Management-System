@@ -439,7 +439,7 @@ def request_password_reset(
     # IMPORTANT:
     # Change this later to your deployed frontend URL.
     reset_link = (
-        f"http://localhost:5173/reset-password?token={raw_token}"
+          f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
     )
 
     # Send email using your existing Brevo tool

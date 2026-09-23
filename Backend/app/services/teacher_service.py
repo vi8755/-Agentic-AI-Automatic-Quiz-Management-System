@@ -18,6 +18,7 @@ from ..schemas import (
 
     
 )
+from ..config import settings
 import secrets
 from ..services.auth_service import send_email_verification
 from app.security import verify_password, hash_password
@@ -1292,7 +1293,7 @@ def assign_quiz_to_section(
         token = item["token"]
 
         quiz_link = (
-            f"http://localhost:5173/quiz/start/{token}"
+             f"{settings.FRONTEND_URL}/quiz/start/{token}"
         )
 
         try:
