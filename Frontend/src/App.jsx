@@ -45,7 +45,7 @@ import Settings from "./pages/student/Settings";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import SubjectManagement from "./components/dean/subjectmanagement/SubjectManagement";
-import QuizManagement from "./components/dean/quizmanagement/QuizManagement";
+import QuizManagement from "./components/dean/quizManagement/QuizManagement";
 import AttemptsAnalytics from "./components/dean/attemptmanagement/AttemptsAnalytics";
 import DeanAnalytics from "./components/dean/analytics/DeanAnalytics";
 import DescriptiveAssignments from "./pages/teacher/DescriptiveAssignments";
@@ -62,7 +62,7 @@ import StudentDescriptiveAssignments
 
 import StudentDescriptivePending from "./pages/student/StudentDescriptivePending";
 import AnswerDrawingPad from "./pages/student/AnswerDrawingPad";
-import CreatePdfAssignment from "./pages/teacher/descriptivePdf/CreatePdfAssignment";
+import CreatePdfAssignment from "./pages/teacher/descriptivepdf/CreatePdfAssignment";
 import StudentPdfDescriptiveAssignment
     from "./pages/student/descriptivePdf/StudentPdfDescriptiveAssignment";
 
