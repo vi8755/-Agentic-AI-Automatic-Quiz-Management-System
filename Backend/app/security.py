@@ -87,13 +87,16 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    """
-    Get the currently authenticated user.
-    """
+    print("========== AUTH DEBUG ==========")
+    print("TOKEN EXISTS:", bool(token))
+    print("TOKEN:", token[:30] + "..." if token else None)
 
     payload = decode_access_token(token)
 
+    print("PAYLOAD:", payload)
+
     if payload is None:
+        print("❌ AUTH FAILED: Invalid or expired token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -101,7 +104,10 @@ def get_current_user(
 
     email = payload.get("sub")
 
+    print("TOKEN EMAIL:", email)
+
     if email is None:
+        print("❌ AUTH FAILED: Missing sub")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
@@ -113,16 +119,19 @@ def get_current_user(
         .first()
     )
 
+    print("USER FOUND:", user is not None)
+
     if user is None:
+        print("❌ AUTH FAILED: User not found")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
-    print("========== CURRENT USER ==========")
-    print("ID:", user.id)
-    print("Email:", user.email)
-    print("Role:", user.role)
-    print("==================================")
+
+    print("USER ID:", user.id)
+    print("USER EMAIL:", user.email)
+    print("USER ROLE:", user.role)
+    print("================================")
 
     return user
 

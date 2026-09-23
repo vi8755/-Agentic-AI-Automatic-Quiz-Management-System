@@ -15,7 +15,10 @@ def create_teacher_section(
     assignment: TeacherSectionCreate,
 ):
 
-    # 1. Check Teacher
+    # ========================================================
+    # 1. CHECK TEACHER
+    # ========================================================
+
     teacher = (
         db.query(Teacher)
         .filter(
@@ -30,11 +33,15 @@ def create_teacher_section(
             detail="Teacher not found.",
         )
 
-    # 2. Check Section
+    # ========================================================
+    # 2. CHECK SECTION
+    # ========================================================
+
     section = (
         db.query(Section)
         .filter(
-            Section.id == assignment.section_id
+            Section.id == assignment.section_id,
+            Section.is_active == True,
         )
         .first()
     )
@@ -42,14 +49,31 @@ def create_teacher_section(
     if not section:
         raise HTTPException(
             status_code=404,
-            detail="Section not found.",
+            detail="Section not found or inactive.",
         )
 
-    # 3. Check Subject
+    # ========================================================
+    # 3. CHECK BATCH
+    # ========================================================
+
+    if (
+        not section.batch
+        or not section.batch.is_active
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="Batch not found or inactive.",
+        )
+
+    # ========================================================
+    # 4. CHECK SUBJECT
+    # ========================================================
+
     subject = (
         db.query(Subject)
         .filter(
-            Subject.id == assignment.subject_id
+            Subject.id == assignment.subject_id,
+            Subject.is_active == True,
         )
         .first()
     )
@@ -57,16 +81,24 @@ def create_teacher_section(
     if not subject:
         raise HTTPException(
             status_code=404,
-            detail="Subject not found.",
+            detail="Subject not found or inactive.",
         )
 
-    # 4. Check Duplicate Assignment
+    # ========================================================
+    # 5. CHECK DUPLICATE ASSIGNMENT
+    # ========================================================
+
     existing = (
         db.query(TeacherSection)
         .filter(
-            TeacherSection.teacher_id == assignment.teacher_id,
-            TeacherSection.section_id == assignment.section_id,
-            TeacherSection.subject_id == assignment.subject_id,
+            TeacherSection.teacher_id
+            == assignment.teacher_id,
+
+            TeacherSection.section_id
+            == assignment.section_id,
+
+            TeacherSection.subject_id
+            == assignment.subject_id,
         )
         .first()
     )
@@ -77,7 +109,10 @@ def create_teacher_section(
             detail="Assignment already exists.",
         )
 
-    # 5. Create Assignment
+    # ========================================================
+    # 6. CREATE ASSIGNMENT
+    # ========================================================
+
     new_assignment = TeacherSection(
         teacher_id=assignment.teacher_id,
         section_id=assignment.section_id,

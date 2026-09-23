@@ -78,3 +78,31 @@ def validate_regenerated_question(question: dict):
         raise ValueError("Explanation is missing.")
 
     return question
+
+def validate_generated_question(question: dict):
+    """
+    Used when generating a single new AI question.
+    """
+
+    if not question.get("question"):
+        raise ValueError("Question text is missing.")
+
+    options = question.get("options", [])
+
+    if len(options) != 4:
+        raise ValueError("Question must contain exactly 4 options.")
+
+    if any(not str(option).strip() for option in options):
+        raise ValueError("Options cannot be empty.")
+
+    answer = question.get("correct_answer")
+
+    if answer not in ["A", "B", "C", "D"]:
+        raise ValueError(
+            "Correct answer must be A, B, C, or D."
+        )
+
+    if not question.get("explanation"):
+        raise ValueError("Explanation is missing.")
+
+    return question

@@ -37,7 +37,7 @@ def quiz_planner_node(
     state: TeacherAIState,
 ):
     quiz_plan = create_quiz_plan(
-        topics=state["clean_topics"],
+        topics=state["selected_topics"],
         question_count=state["question_count"],
         difficulty=state["difficulty"],
         bloom_level=state["bloom_level"],

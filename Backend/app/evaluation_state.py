@@ -1,7 +1,7 @@
 from typing import TypedDict
 
 
-class EvaluationState(TypedDict):
+class EvaluationState(TypedDict, total=False):
     student_email: str
     student_name: str
 
@@ -12,6 +12,7 @@ class EvaluationState(TypedDict):
     student_answers: dict
 
     score: int
+    total_marks: int
     total_questions: int
     percentage: float
 
@@ -19,4 +20,20 @@ class EvaluationState(TypedDict):
     weak_topics: list
 
     performance: str
+
+    # =====================================================
+    # AI Performance Analysis
+    # =====================================================
+
+    performance_summary: str
+
+    strengths: list
+
+    weak_areas: list
+
+    improvement_plan: list
+
+    recommendations: list
+
+    # Keep existing feedback for backward compatibility
     feedback: str

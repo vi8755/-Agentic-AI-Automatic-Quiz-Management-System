@@ -16,6 +16,7 @@ class TeacherAIState(TypedDict):
 
     topics: list[str]
     clean_topics: list[str]
+    selected_topics: list[str]
 
     quiz_plan: dict
 

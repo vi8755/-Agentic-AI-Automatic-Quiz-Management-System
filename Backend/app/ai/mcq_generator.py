@@ -7,6 +7,7 @@ from .llm import llm
 from .prompts import (
     MCQ_GENERATOR_PROMPT,
     REGENERATE_MCQ_PROMPT,
+    GENERATE_SINGLE_MCQ_PROMPT,
 )
 
  
@@ -126,6 +127,45 @@ def regenerate_mcq(
         print("\n========== RAW REGENERATE RESPONSE ==========\n")
         print(response.content)
         print("\n============================================\n")
+
+        print(e)
+        raise
+
+def generate_single_mcq(
+    topic: str,
+    difficulty: str,
+    existing_questions: str,
+):
+    """
+    Generates a single MCQ.
+    """
+
+    prompt = GENERATE_SINGLE_MCQ_PROMPT.format(
+        topic=topic,
+        difficulty=difficulty,
+        existing_questions=existing_questions,
+    )
+
+    response = llm.invoke(
+        [HumanMessage(content=prompt)]
+    )
+
+    print("\n========== RAW SINGLE MCQ ==========\n")
+    print(response.content)
+    print("\n====================================\n")
+
+    try:
+        result = extract_json(response.content)
+
+        if isinstance(result, list):
+            return result[0]
+
+        return result
+
+    except Exception as e:
+        print("\n========== RAW SINGLE MCQ ==========\n")
+        print(response.content)
+        print("\n====================================\n")
 
         print(e)
         raise

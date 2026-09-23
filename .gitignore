@@ -74,3 +74,9 @@ Backend/chroma_db/
 
 # Mac resource forks
 ._*
+
+# Uploaded files
+Backend/uploads/
+# Local test scripts
+Backend/create_test_student.py
+Backend/test_groq_models.py

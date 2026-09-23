@@ -13,14 +13,15 @@ createRoot(document.getElementById('root')).render(
     </AuthProvider>
 
     <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        pauseOnHover
-        draggable
-        theme="colored"
+    position="top-right"
+    autoClose={2500}
+    hideProgressBar={false}
+    newestOnTop
+    closeOnClick
+    pauseOnFocusLoss
+    draggable
+    pauseOnHover
+    theme="colored"
     />
 </StrictMode>,
 )
