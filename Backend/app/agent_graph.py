@@ -13,7 +13,7 @@ from .agents.student_agent import student_agent
 from .agents.quiz_agent import quiz_agent
 from .agents.email_agent import email_agent
 from .config import settings
-from .rag_tool import knowledge_search
+# from .rag_tool import knowledge_search
 
 
 # ======================================================
@@ -181,16 +181,16 @@ def executor_node(state):
 # RAG Agent
 # ======================================================
 
-def research_agent(state):
-    query = state["messages"][-1].content
+# def research_agent(state):
+#     query = state["messages"][-1].content
 
-    result = knowledge_search.invoke(query)
+#     result = knowledge_search.invoke(query)
 
-    return {
+#     return {
 
-        "research_result": result
+#         "research_result": result
 
-    }
+#     }
 # ======================================================
 # Memory Agent
 # ======================================================
@@ -270,13 +270,13 @@ def supervisor(state):
 
         decision = "email"
 
-    elif any(word in question for word in [
-        "research",
-        "rag",
-        "knowledge"
-    ]):
+    # elif any(word in question for word in [
+    #     "research",
+    #     "rag",
+    #     "knowledge"
+    # ]):
 
-        decision = "research"
+    #     decision = "research"
 
     elif any(word in question for word in [
         "memory",
@@ -347,10 +347,10 @@ workflow.add_node(
 
 # Future Nodes
 
-workflow.add_node(
-    "research",
-    research_agent
-)
+# workflow.add_node(
+#     "research",
+#     research_agent
+# )
 
 workflow.add_node(
     "memory",
@@ -401,7 +401,7 @@ workflow.add_conditional_edges(
 
         "email": "email",
 
-        "research": "research",
+        # "research": "research",
 
         "memory": "memory"
 
@@ -434,10 +434,10 @@ workflow.add_edge(
 # Future Workflow
 # ======================================================
 
-workflow.add_edge(
-    "research",
-    "answer"
-)
+# workflow.add_edge(
+#     "research",
+#     "answer"
+# )
 
 workflow.add_edge(
     "memory",
