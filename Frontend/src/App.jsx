@@ -347,7 +347,7 @@ function App() {
 
         {/* Quiz Result */}
         <Route
-    path="/student/result/:responseId"
+    path="/quiz/result/:responseId"
     element={<QuizResult />}
 />
  
