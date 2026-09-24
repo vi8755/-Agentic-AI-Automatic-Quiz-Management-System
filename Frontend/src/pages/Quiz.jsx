@@ -1140,7 +1140,7 @@ function Quiz() {
             // Navigate To Result
             // -----------------------------------------
             navigate(
-    `/quiz/result/${data.response_id}?token=${encodeURIComponent(token)}`
+      `/student/result/${data.response_id}?token=${encodeURIComponent(token)}`
 );
  
 
