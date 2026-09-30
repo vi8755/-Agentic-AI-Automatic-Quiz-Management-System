@@ -5,6 +5,7 @@ from fastapi import (
     UploadFile,
     File,
 )
+from ..config import settings
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 from openpyxl import Workbook
@@ -1891,7 +1892,7 @@ def assign_descriptive_assignment(
     # FRONTEND URL
     # =====================================================
 
-    frontend_url = "http://localhost:5173"
+    frontend_url =settings.FRONTEND_URL
 
     # =====================================================
     # SEND EMAILS
