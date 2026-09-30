@@ -232,11 +232,19 @@ const fullQuestionPdfUrl =
         );
 
         toast.success(
-            "Answer PDF submitted successfully."
-        );
+    "Answer PDF submitted successfully."
+);
 
-        // Clear selected file after successful submission
-        setAnswerFile(null);
+// -------------------------------------------------
+// GO TO SUBMISSION STATUS PAGE
+// -------------------------------------------------
+
+navigate(
+    `/student/descriptive-assignments/${assignment.assignment_id}/status`,
+    {
+        replace: true,
+    }
+);
 
     } catch (err) {
         console.error(

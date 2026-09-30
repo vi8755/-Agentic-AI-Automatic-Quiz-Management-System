@@ -15,7 +15,7 @@ import {
 import { toast } from "react-toastify";
 
 import {
-    createTeacherDescriptiveAssignment,
+    createManualDescriptiveAssignment,
     getTeacherDescriptiveSections,
     publishDescriptiveAssignment,
 } from "../../api/teacherApi";
@@ -32,8 +32,8 @@ const CreateDescriptiveAssignment = () => {
         title: "",
         subject_id: "",
         instructions: "",
+        start_date_time: "",
         due_date: "",
-        duration_minutes: "",
         questions: [
             {
                 question_text: "",
@@ -153,15 +153,43 @@ const CreateDescriptiveAssignment = () => {
             toast.error("Subject ID is required.");
             return false;
         }
+
+        if (!formData.start_date_time) {
+            toast.error("Exam start date and time is required.");
+            return false;
+        }
+
+        if (!formData.due_date) {
+            toast.error("Exam end date and time is required.");
+            return false;
+        }
+
+        const start = new Date(formData.start_date_time);
+        const end = new Date(formData.due_date);
+
         if (
-         !formData.duration_minutes ||
-         Number(formData.duration_minutes) <= 0
-       ) {
-         toast.error(
-        "Exam duration must be greater than 0 minutes."
-      );
-       return false;
-     }
+            Number.isNaN(start.getTime()) ||
+            Number.isNaN(end.getTime())
+        ) {
+            toast.error("Please enter valid exam start and end times.");
+            return false;
+        }
+
+        if (start >= end) {
+            toast.error(
+                "Exam end date and time must be after the start date and time."
+            );
+            return false;
+        }
+
+        const durationMinutes = Math.floor(
+            (end.getTime() - start.getTime()) / (1000 * 60)
+        );
+
+        if (durationMinutes <= 0) {
+            toast.error("Exam duration must be at least 1 minute.");
+            return false;
+        }
 
         if (!formData.questions.length) {
             toast.error("Add at least one question.");
@@ -184,32 +212,58 @@ const CreateDescriptiveAssignment = () => {
     };
 
     
+    const getDurationMinutes = () => {
+        if (!formData.start_date_time || !formData.due_date) {
+            return null;
+        }
+
+        const start = new Date(formData.start_date_time);
+        const end = new Date(formData.due_date);
+
+        if (
+            Number.isNaN(start.getTime()) ||
+            Number.isNaN(end.getTime()) ||
+            start >= end
+        ) {
+            return null;
+        }
+
+        return Math.floor(
+            (end.getTime() - start.getTime()) / (1000 * 60)
+        );
+    };
+
+    const durationMinutes = getDurationMinutes();
+
     const buildPayload = () => ({
-    title: formData.title.trim(),
-    subject_id: Number(formData.subject_id),
-    instructions: formData.instructions?.trim() || null,
-    due_date: formData.due_date
-    ? new Date(formData.due_date).toISOString()
-    : null,
+        title: formData.title.trim(),
+        subject_id: Number(formData.subject_id),
+        instructions: formData.instructions?.trim() || null,
 
-duration_minutes: Number(formData.duration_minutes),
+        start_date_time: formData.start_date_time
+            ? new Date(formData.start_date_time).toISOString()
+            : null,
 
-academic_year: "2026-27",
+        due_date: formData.due_date
+            ? new Date(formData.due_date).toISOString()
+            : null,
 
-    section_ids: formData.section_ids,
+        academic_year: "2026-27",
 
-    questions: formData.questions.map((question, index) => ({
-        question_text: question.question_text.trim(),
-        max_marks: Number(question.max_marks),
-        expected_answer:
-            question.expected_answer?.trim() || null,
-        evaluation_rubric:
-            question.evaluation_rubric?.trim() || null,
-        question_order: index + 1,
-    })),
- });
+        section_ids: formData.section_ids,
 
-     const handleSaveDraft = async () => {
+        questions: formData.questions.map((question, index) => ({
+            question_text: question.question_text.trim(),
+            max_marks: Number(question.max_marks),
+            expected_answer:
+                question.expected_answer?.trim() || null,
+            evaluation_rubric:
+                question.evaluation_rubric?.trim() || null,
+            question_order: index + 1,
+        })),
+    });
+
+    const handleSaveDraft = async () => {
     if (!validate()) return;
 
     try {
@@ -220,7 +274,7 @@ academic_year: "2026-27",
 console.log("PAYLOAD:", payload);
 
 const assignment =
-    await createTeacherDescriptiveAssignment(payload);
+    await createManualDescriptiveAssignment(payload);
 
         console.log("Created descriptive assignment:", assignment);
 
@@ -256,7 +310,7 @@ const assignment =
             setPublishing(true);
 
             const assignment =
-                await createTeacherDescriptiveAssignment(
+                await createManualDescriptiveAssignment(
                     buildPayload()
                 );
 
@@ -377,9 +431,35 @@ const assignment =
                             />
                         </div>
 
+                        {/* Exam Schedule */}
                         <div>
                             <label className="block text-sm font-medium mb-2">
-                                Due Date
+                                Exam Start Date & Time
+                            </label>
+
+                            <div className="relative">
+                                <Calendar
+                                    size={18}
+                                    className="absolute left-3 top-3.5 text-gray-400"
+                                />
+
+                                <input
+                                    type="datetime-local"
+                                    name="start_date_time"
+                                    value={formData.start_date_time}
+                                    onChange={handleChange}
+                                    className="w-full border rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-purple-500 outline-none"
+                                />
+                            </div>
+
+                            <p className="text-xs text-gray-500 mt-1">
+                                Students can start the exam only from this time.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium mb-2">
+                                Exam End Date & Time
                             </label>
 
                             <div className="relative">
@@ -392,36 +472,88 @@ const assignment =
                                     type="datetime-local"
                                     name="due_date"
                                     value={formData.due_date}
+                                    min={formData.start_date_time || undefined}
                                     onChange={handleChange}
                                     className="w-full border rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-purple-500 outline-none"
                                 />
                             </div>
+
+                            <p className="text-xs text-gray-500 mt-1">
+                                Students cannot start or continue the exam after this time.
+                            </p>
                         </div>
+
                         <div>
-    <label className="block text-sm font-medium mb-2">
-        Exam Duration
-    </label>
+                            <label className="block text-sm font-medium mb-2">
+                                Exam Duration
+                            </label>
 
-    <div className="relative">
-        <input
-            type="number"
-            name="duration_minutes"
-            min="1"
-            value={formData.duration_minutes}
-            onChange={handleChange}
-            placeholder="e.g. 60"
-            className="w-full border rounded-xl px-4 py-3 pr-20 focus:ring-2 focus:ring-purple-500 outline-none"
-        />
+                            <input
+                                type="text"
+                                value={
+                                    durationMinutes
+                                        ? `${durationMinutes} minutes`
+                                        : ""
+                                }
+                                readOnly
+                                placeholder="Calculated automatically"
+                                className="w-full border rounded-xl px-4 py-3 bg-gray-100 text-gray-700 cursor-not-allowed outline-none"
+                            />
 
-        <span className="absolute right-4 top-3.5 text-sm text-gray-500">
-            minutes
-        </span>
-    </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Duration is automatically calculated from the start and end time.
+                            </p>
+                        </div>
 
-    <p className="text-xs text-gray-500 mt-1">
-        Students will have this much time after starting the exam.
-    </p>
-</div>
+                        {/* Schedule Summary */}
+                        {formData.start_date_time &&
+                            formData.due_date &&
+                            durationMinutes && (
+                                <div className="md:col-span-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3">
+                                    <p className="text-sm font-medium text-purple-800">
+                                        Exam Schedule
+                                    </p>
+
+                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                                        <div>
+                                            <span className="text-gray-500">
+                                                Start:
+                                            </span>{" "}
+                                            <span className="font-semibold text-gray-900">
+                                                {new Date(
+                                                    formData.start_date_time
+                                                ).toLocaleString("en-IN", {
+                                                    dateStyle: "medium",
+                                                    timeStyle: "short",
+                                                })}
+                                            </span>
+                                        </div>
+
+                                        <div>
+                                            <span className="text-gray-500">
+                                                End:
+                                            </span>{" "}
+                                            <span className="font-semibold text-gray-900">
+                                                {new Date(
+                                                    formData.due_date
+                                                ).toLocaleString("en-IN", {
+                                                    dateStyle: "medium",
+                                                    timeStyle: "short",
+                                                })}
+                                            </span>
+                                        </div>
+
+                                        <div>
+                                            <span className="text-gray-500">
+                                                Duration:
+                                            </span>{" "}
+                                            <span className="font-semibold text-gray-900">
+                                                {durationMinutes} minutes
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                     </div>
                 </div>
 

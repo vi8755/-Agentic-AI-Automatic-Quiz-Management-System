@@ -1623,11 +1623,15 @@ def get_student_descriptive_assignment(
     Return a descriptive assignment only if it is
     assigned to the student's section.
 
-    Also starts the student's exam timer when the
-    assignment is opened for the first time.
+    The exam uses a fixed teacher-defined window:
+        start_date_time -> due_date
+
+    Opening the assignment does NOT start the student's timer.
+    The timer starts only when the student explicitly clicks
+    "Start Test".
     """
 
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
 
     # =====================================================
     # 1. FIND STUDENT
@@ -1705,17 +1709,16 @@ def get_student_descriptive_assignment(
     )
 
     # =====================================================
-    # 5. CREATE SUBMISSION / START TIMER
+    # 5. CREATE NOT-STARTED SUBMISSION IF NEEDED
     # =====================================================
 
     if not submission:
-
         submission = DescriptiveSubmission(
             assignment_id=assignment.id,
             student_id=student.id,
-            status="In Progress",
+            status="Not Started",
             evaluation_status="Pending",
-            started_at=datetime.utcnow(),
+            started_at=None,
         )
 
         db.add(submission)
@@ -1727,7 +1730,6 @@ def get_student_descriptive_assignment(
     # =====================================================
 
     if submission.status == "Submitted":
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1736,42 +1738,62 @@ def get_student_descriptive_assignment(
         )
 
     # =====================================================
-    # 7. CALCULATE EXPIRY TIME
+    # 7. FIXED EXAM WINDOW
     # =====================================================
 
+    start_date_time = None
     expires_at = None
 
-    if assignment.duration_minutes:
+    if assignment.assignment_type == "MANUAL":
 
-        started_at = submission.started_at
+        if (
+            assignment.start_date_time is not None
+            and assignment.due_date is not None
+        ):
+            start_date_time = assignment.start_date_time
+            expires_at = assignment.due_date
 
-        if started_at:
+            # ---------------------------------------------
+            # Normalize start time to UTC
+            # ---------------------------------------------
 
-            # Handle timezone-naive DB datetime safely
-            if started_at.tzinfo is None:
-
-                started_at_utc = started_at.replace(
+            if start_date_time.tzinfo is None:
+                start_date_time = start_date_time.replace(
                     tzinfo=timezone.utc
                 )
-
             else:
-
-                started_at_utc = started_at.astimezone(
+                start_date_time = start_date_time.astimezone(
                     timezone.utc
                 )
 
-            expires_at = (
-                started_at_utc
-                + timedelta(
-                    minutes=assignment.duration_minutes
+            # ---------------------------------------------
+            # Normalize end time to UTC
+            # ---------------------------------------------
+
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(
+                    tzinfo=timezone.utc
                 )
-            )
+            else:
+                expires_at = expires_at.astimezone(
+                    timezone.utc
+                )
+
             current_time = datetime.now(timezone.utc)
-            if current_time > expires_at:
-              raise HTTPException(
-              status_code=400,
-            detail="The time limit for this assignment has expired.",
-    )
+
+            # ---------------------------------------------
+            # Exam has completely expired
+            # ---------------------------------------------
+
+            if current_time >= expires_at:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "The time limit for this assignment "
+                        "has expired."
+                    ),
+                )
 
     # =====================================================
     # 8. TEACHER
@@ -1812,17 +1834,27 @@ def get_student_descriptive_assignment(
 
         "teacher_name": teacher_name,
 
-        "due_date": assignment.due_date,
+        # ---------------------------------------------
+        # Fixed exam timing
+        # ---------------------------------------------
 
-        "status": assignment.status,
+        "start_date_time": start_date_time,
+
+        "due_date": expires_at,
 
         "duration_minutes": assignment.duration_minutes,
+
+        # ---------------------------------------------
+        # Student submission timing
+        # ---------------------------------------------
 
         "started_at": submission.started_at,
 
         "expires_at": expires_at,
 
         "submission_status": submission.status,
+
+        "status": assignment.status,
 
         "questions": assignment.questions,
     }
@@ -1834,13 +1866,20 @@ def submit_student_descriptive_assignment(
     """
     Submit student's descriptive assignment answers.
 
-    Supports:
-    - Text answers
-    - Drawing/figure answers
-    - Updating an existing in-progress submission
-    - AI evaluation after submission
-    - Server-side duration enforcement
+    Fixed exam-window behavior:
+
+    - Teacher defines fixed start time and end time.
+    - assignment.start_date_time = exam start
+    - assignment.due_date = exam end
+    - Starting late does NOT give extra time.
+    - Server validates against the fixed exam end time.
+    - A small grace period is allowed for the final
+      auto-submit request to reach the server.
+    - Supports text answers.
+    - Supports drawing answers.
     """
+
+    from datetime import datetime, timezone, timedelta
 
     # =====================================================
     # 1. FIND STUDENT
@@ -1862,7 +1901,7 @@ def submit_student_descriptive_assignment(
         )
 
     # =====================================================
-    # 2. FIND ASSIGNMENT ASSIGNED TO STUDENT'S SECTION
+    # 2. FIND ASSIGNMENT
     # =====================================================
 
     assignment = (
@@ -1875,6 +1914,7 @@ def submit_student_descriptive_assignment(
         .filter(
             DescriptiveAssignment.id
             == submission_data.assignment_id,
+
             DescriptiveAssignmentSection.section_id
             == student.section_id,
         )
@@ -1904,41 +1944,110 @@ def submit_student_descriptive_assignment(
         )
 
     # =====================================================
-    # 4. CHECK ASSIGNMENT DUE DATE
+    # 4. FIXED EXAM WINDOW
+    #
+    # start_date_time -> exam opening time
+    # due_date        -> exam closing time
+    #
+    # IMPORTANT:
+    # DO NOT calculate expiry from submission.started_at.
     # =====================================================
 
-    from datetime import datetime, timezone, timedelta
+    current_time = datetime.now(timezone.utc)
+
+    exam_start = None
+    exam_end = None
+
+    # -----------------------------------------------------
+    # Exam start
+    # -----------------------------------------------------
+
+    if assignment.start_date_time:
+
+        exam_start = assignment.start_date_time
+
+        if exam_start.tzinfo is None:
+            exam_start = exam_start.replace(
+                tzinfo=timezone.utc
+            )
+        else:
+            exam_start = exam_start.astimezone(
+                timezone.utc
+            )
+
+    # -----------------------------------------------------
+    # Exam end
+    # -----------------------------------------------------
 
     if assignment.due_date:
 
-        due_date = assignment.due_date
+        exam_end = assignment.due_date
 
-        if due_date.tzinfo is None:
-            now = datetime.utcnow()
-
-            if now > due_date:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "The submission deadline "
-                        "has passed."
-                    ),
-                )
-
+        if exam_end.tzinfo is None:
+            exam_end = exam_end.replace(
+                tzinfo=timezone.utc
+            )
         else:
-            now = datetime.now(timezone.utc)
-
-            if now > due_date:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "The submission deadline "
-                        "has passed."
-                    ),
-                )
+            exam_end = exam_end.astimezone(
+                timezone.utc
+            )
 
     # =====================================================
-    # 5. FIND EXISTING SUBMISSION
+    # 5. CHECK EXAM HAS STARTED
+    # =====================================================
+
+    if exam_start and current_time < exam_start:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The examination has not started yet."
+            ),
+        )
+
+    # =====================================================
+    # 6. CHECK FIXED EXAM END
+    #
+    # Auto-submit may reach server a little after 00:00.
+    # Therefore use the configured grace period.
+    # =====================================================
+
+    if exam_end:
+
+        grace_period = timedelta(
+            seconds=SUBMISSION_GRACE_SECONDS
+        )
+
+        if current_time > (
+            exam_end + grace_period
+        ):
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The time limit for this "
+                    "assignment has expired."
+                ),
+            )
+
+    # =====================================================
+    # DEBUG
+    # =====================================================
+
+    print(
+        "FIXED EXAM SUBMISSION DEBUG:",
+        "exam_start =",
+        exam_start,
+        "exam_end =",
+        exam_end,
+        "current_time =",
+        current_time,
+        "grace_seconds =",
+        SUBMISSION_GRACE_SECONDS,
+    )
+
+    # =====================================================
+    # 7. FIND EXISTING SUBMISSION
     # =====================================================
 
     existing_submission = (
@@ -1946,23 +2055,28 @@ def submit_student_descriptive_assignment(
         .filter(
             DescriptiveSubmission.assignment_id
             == assignment.id,
+
             DescriptiveSubmission.student_id
             == student.id,
+        )
+        .order_by(
+            DescriptiveSubmission.id.desc()
         )
         .first()
     )
 
     # =====================================================
-    # 6. CREATE / LOAD SUBMISSION
+    # 8. LOAD / CREATE SUBMISSION
     # =====================================================
 
     if existing_submission:
 
         # -------------------------------------------------
-        # Prevent duplicate submission
+        # Already submitted
         # -------------------------------------------------
 
         if existing_submission.status == "Submitted":
+
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -1975,102 +2089,29 @@ def submit_student_descriptive_assignment(
 
     else:
 
+        # -------------------------------------------------
+        # Safety fallback
+        #
+        # Normally the submission should already have been
+        # created by the START endpoint.
+        #
+        # IMPORTANT:
+        # Do NOT start the timer here.
+        # -------------------------------------------------
+
         submission = DescriptiveSubmission(
             assignment_id=assignment.id,
             student_id=student.id,
             status="In Progress",
             evaluation_status="Pending",
-            started_at=datetime.utcnow(),
+            started_at=None,
         )
 
         db.add(submission)
         db.flush()
 
     # =====================================================
-    # 7. SERVER-SIDE DURATION ENFORCEMENT
-    # =====================================================
-
-    if assignment.duration_minutes:
-
-        if not submission.started_at:
-
-            # Safety fallback
-            submission.started_at = datetime.utcnow()
-            db.flush()
-
-        started_at = submission.started_at
-
-        # -------------------------------------------------
-        # Convert started_at to UTC
-        # -------------------------------------------------
-
-        if started_at.tzinfo is None:
-
-            started_at_utc = started_at.replace(
-                tzinfo=timezone.utc
-            )
-
-        else:
-
-            started_at_utc = started_at.astimezone(
-                timezone.utc
-            )
-
-        # -------------------------------------------------
-        # Calculate exam expiry
-        # -------------------------------------------------
-
-        expires_at = (
-            started_at_utc
-            + timedelta(
-                minutes=assignment.duration_minutes
-            )
-        )
-
-        # -------------------------------------------------
-        # Current UTC time
-        # -------------------------------------------------
-
-        current_time = datetime.now(
-            timezone.utc
-        )
-        print(
-           "EXAM TIME DEBUG:",
-           "started_at =", started_at_utc,
-           "expires_at =", expires_at,
-           "current_time =", current_time,
-           "grace_seconds =", SUBMISSION_GRACE_SECONDS,
-        )
-
-
-        # -------------------------------------------------
-        # BLOCK LATE SUBMISSION
-        # -------------------------------------------------
-        # -------------------------------------------------
-# BLOCK LATE SUBMISSION
-#
-# Allow a very small grace period for the final
-# auto-submit request to travel from browser to server.
-# -------------------------------------------------
-      
-         
-        grace_period = timedelta(seconds=SUBMISSION_GRACE_SECONDS)
-
-        if current_time > (expires_at + grace_period):
-
-         raise HTTPException(
-
-
-        status_code=400,
-        detail=(
-            "The time limit for this "
-            "assignment has expired."
-        ),
-    )
- 
-
-    # =====================================================
-    # 8. VALIDATE QUESTIONS
+    # 9. VALIDATE QUESTIONS
     # =====================================================
 
     question_map = {
@@ -2081,7 +2122,7 @@ def submit_student_descriptive_assignment(
     submitted_question_ids = set()
 
     # =====================================================
-    # 9. SAVE ANSWERS + DRAWINGS
+    # 10. SAVE ANSWERS
     # =====================================================
 
     for submitted_answer in submission_data.answers:
@@ -2131,6 +2172,7 @@ def submit_student_descriptive_assignment(
             .filter(
                 DescriptiveAnswer.submission_id
                 == submission.id,
+
                 DescriptiveAnswer.question_id
                 == question_id,
             )
@@ -2166,6 +2208,7 @@ def submit_student_descriptive_assignment(
                 ).filter(
                     DescriptiveAnswerAttachment.answer_id
                     == existing_answer.id,
+
                     DescriptiveAnswerAttachment.file_type
                     == "drawing",
                 ).delete(
@@ -2177,11 +2220,15 @@ def submit_student_descriptive_assignment(
                 drawing_attachment = (
                     DescriptiveAnswerAttachment(
                         answer_id=existing_answer.id,
+
                         file_name=(
                             f"drawing_{question_id}.png"
                         ),
+
                         file_url=drawing,
+
                         mime_type="image/png",
+
                         file_type="drawing",
                     )
                 )
@@ -2198,10 +2245,13 @@ def submit_student_descriptive_assignment(
 
             answer = DescriptiveAnswer(
                 submission_id=submission.id,
+
                 question_id=question_id,
+
                 answer_text=(
                     submitted_answer.answer_text
                 ),
+
                 evaluation_status="Pending",
             )
 
@@ -2226,11 +2276,15 @@ def submit_student_descriptive_assignment(
                 drawing_attachment = (
                     DescriptiveAnswerAttachment(
                         answer_id=answer.id,
+
                         file_name=(
                             f"drawing_{question_id}.png"
                         ),
+
                         file_url=drawing,
+
                         mime_type="image/png",
+
                         file_type="drawing",
                     )
                 )
@@ -2240,7 +2294,7 @@ def submit_student_descriptive_assignment(
                 )
 
     # =====================================================
-    # 10. CALCULATE TOTAL MARKS
+    # 11. CALCULATE TOTAL MARKS
     # =====================================================
 
     total_marks = sum(
@@ -2251,35 +2305,34 @@ def submit_student_descriptive_assignment(
     submission.total_marks = total_marks
 
     # =====================================================
-    # 11. MARK SUBMISSION AS SUBMITTED
+    # 12. MARK AS SUBMITTED
     # =====================================================
 
     submission.status = "Submitted"
 
     submission.evaluation_status = "Pending"
 
-    submission.submitted_at = (
-        datetime.utcnow()
-    )
+    submission.submitted_at = datetime.utcnow()
 
     # =====================================================
-    # 12. SAVE TO DATABASE
+    # 13. SAVE DATABASE
     # =====================================================
 
-    db.commit()
+    try:
 
-    db.refresh(submission)
+        db.commit()
+
+        db.refresh(submission)
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
     # =====================================================
-    # 13. AI EVALUATION
+    # 14. RETURN
     # =====================================================
-
-    evaluate_descriptive_submission(
-        submission_id=submission.id,
-        db=db,
-    )
-
-    db.refresh(submission)
 
     return submission
 def get_student_descriptive_submission(

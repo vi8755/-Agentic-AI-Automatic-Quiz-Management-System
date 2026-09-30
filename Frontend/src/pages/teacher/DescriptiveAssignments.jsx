@@ -14,7 +14,8 @@ import {
     Send,
     Loader2,
     Award,
-        FileText,
+    FileText,
+    Trash2,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -26,6 +27,7 @@ import {
     assignDescriptiveAssignment,
     publishDescriptiveAssignment,
     getDescriptiveAssignmentAssignedStudents,
+    deleteDescriptiveAssignment,
 } from "../../api/teacherApi";
 
 const DescriptiveAssignments = () => {
@@ -61,6 +63,14 @@ const DescriptiveAssignments = () => {
 
     const [publishingAssignmentId, setPublishingAssignmentId] =
         useState(null);
+
+    // =========================================================
+    // DELETE ASSIGNMENT
+    // =========================================================
+
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [deleteAssignment, setDeleteAssignment] = useState(null);
+    const [deleting, setDeleting] = useState(false);
 
     // =========================================================
     // ASSIGNED STUDENTS MODAL
@@ -348,6 +358,69 @@ const DescriptiveAssignments = () => {
             );
         } finally {
             setPublishingAssignmentId(null);
+        }
+    };
+
+    // =========================================================
+    // DELETE ASSIGNMENT
+    // =========================================================
+
+    const openDeleteModal = (assignment) => {
+        if (!assignment) {
+            return;
+        }
+
+        setDeleteAssignment(assignment);
+        setShowDeleteModal(true);
+    };
+
+    const closeDeleteModal = () => {
+        if (deleting) {
+            return;
+        }
+
+        setShowDeleteModal(false);
+        setDeleteAssignment(null);
+    };
+
+    const handleDeleteAssignment = async () => {
+        if (!deleteAssignment) {
+            return;
+        }
+
+        try {
+            setDeleting(true);
+
+            const response = await deleteDescriptiveAssignment(
+                deleteAssignment.id
+            );
+
+            toast.success(
+                response?.message ||
+                    "Assignment deleted successfully."
+            );
+
+            setAssignments((previous) =>
+                previous.filter(
+                    (item) =>
+                        item.id !== deleteAssignment.id
+                )
+            );
+
+            setShowDeleteModal(false);
+            setDeleteAssignment(null);
+        } catch (error) {
+            console.error(
+                "Failed to delete assignment:",
+                error
+            );
+
+            toast.error(
+                error?.response?.data?.detail ||
+                    "Failed to delete assignment."
+            );
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -657,7 +730,7 @@ const DescriptiveAssignments = () => {
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">
-                            Descriptive Assignments
+                            Descriptive Assignments 
                         </h1>
 
                         <p className="text-gray-500 mt-1">
@@ -1128,6 +1201,21 @@ const DescriptiveAssignments = () => {
     Performance
 </button>
 
+                                                {/* Delete */}
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openDeleteModal(
+                                                            assignment
+                                                        )
+                                                    }
+                                                    className="flex items-center justify-center gap-2 bg-red-600 text-white px-5 py-3 rounded-xl font-medium hover:bg-red-700 transition"
+                                                >
+                                                    <Trash2 size={18} />
+                                                    Delete
+                                                </button>
+
                                             </div>
                                         </div>
 
@@ -1416,6 +1504,104 @@ const DescriptiveAssignments = () => {
                                     <>
                                         <Send size={18} />
                                         Assign Assignment
+                                    </>
+                                )}
+                            </button>
+
+                        </div>
+
+                    </div>
+                </div>
+            )}
+
+            {/* =========================================================
+                DELETE ASSIGNMENT MODAL
+            ========================================================== */}
+
+            {showDeleteModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+
+                        {/* MODAL HEADER */}
+
+                        <div className="px-6 py-5 border-b">
+                            <div className="flex items-start gap-4">
+
+                                <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                                    <Trash2
+                                        size={24}
+                                        className="text-red-600"
+                                    />
+                                </div>
+
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900">
+                                        Delete Assignment
+                                    </h2>
+
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        This action cannot be undone.
+                                    </p>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        {/* MODAL CONTENT */}
+
+                        <div className="px-6 py-5">
+                            <p className="text-gray-700">
+                                Are you sure you want to delete
+                                this assignment?
+                            </p>
+
+                            <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-4">
+                                <p className="text-xs text-red-600 font-semibold uppercase">
+                                    Assignment
+                                </p>
+
+                                <p className="font-bold text-gray-900 mt-1">
+                                    {deleteAssignment?.title}
+                                </p>
+
+                                <p className="text-sm text-gray-500 mt-1">
+                                    Assignment #
+                                    {deleteAssignment?.id}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* MODAL FOOTER */}
+
+                        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 px-6 py-5 border-t bg-gray-50">
+
+                            <button
+                                type="button"
+                                onClick={closeDeleteModal}
+                                disabled={deleting}
+                                className="px-5 py-3 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-white disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleDeleteAssignment}
+                                disabled={deleting}
+                                className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <Loader2
+                                            size={18}
+                                            className="animate-spin"
+                                        />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 size={18} />
+                                        Delete Assignment
                                     </>
                                 )}
                             </button>

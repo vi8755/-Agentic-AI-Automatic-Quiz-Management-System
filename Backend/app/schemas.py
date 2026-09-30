@@ -904,8 +904,8 @@ class DescriptiveAssignmentCreate(BaseModel):
     question_pdf_url: Optional[str] = None
     question_pdf_name: Optional[str] = None
 
+    start_date_time: Optional[datetime] = None
     due_date: Optional[datetime] = None
-    duration_minutes: Optional[int] = None
 
 class DescriptiveAssignmentResponse(BaseModel):
     id: int
@@ -922,6 +922,7 @@ class DescriptiveAssignmentResponse(BaseModel):
     question_pdf_url: Optional[str] = None
     question_pdf_name: Optional[str] = None
 
+    start_date_time: Optional[datetime] = None
     due_date: Optional[datetime] = None
     duration_minutes: Optional[int] = None
 
@@ -930,7 +931,6 @@ class DescriptiveAssignmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class DescriptiveAssignmentDetailResponse(BaseModel):
     id: int

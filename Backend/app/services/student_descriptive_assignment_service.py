@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
-
+import time
 from ..models import (
     User,
     Student,
@@ -174,136 +174,46 @@ def get_existing_submission(
 # START DESCRIPTIVE ASSIGNMENT
 # =========================================================
 
+from datetime import datetime, timezone
+
+
 def start_descriptive_assignment(
     db: Session,
     current_user: User,
     assignment_id: int,
 ):
+    overall_start = time.perf_counter()
+    # =====================================================
+    # 1. FIND STUDENT
+    # =====================================================
+    step_start = time.perf_counter()
 
     student_id = get_student_id_from_user(
         db=db,
         current_user=current_user,
     )
+    print(
+        f"[START-DEBUG] get_student_id_from_user: "
+        f"{time.perf_counter() - step_start:.3f}s"
+    )
 
-    # -----------------------------------------------------
-    # Verify assignment is available
-    # -----------------------------------------------------
+    # =====================================================
+    # 2. GET ASSIGNMENT
+    #
+    # IMPORTANT:
+    # get_student_descriptive_assignment()
+    # returns a SQLAlchemy DescriptiveAssignment object.
+    # =====================================================
+    step_start = time.perf_counter()
 
     assignment = get_student_descriptive_assignment(
         db=db,
         current_user=current_user,
         assignment_id=assignment_id,
     )
-
-    # -----------------------------------------------------
-    # Check due date
-    # -----------------------------------------------------
-
-    now = datetime.now(timezone.utc)
-
-    if assignment.due_date:
-
-        due_date = assignment.due_date
-
-        if due_date.tzinfo is None:
-            due_date = due_date.replace(
-                tzinfo=timezone.utc
-            )
-
-        if now > due_date:
-            raise ValueError(
-                "This assignment is past its due date."
-            )
-
-    # -----------------------------------------------------
-    # Check existing submission
-    # -----------------------------------------------------
-
-    submission = get_existing_submission(
-        db=db,
-        student_id=student_id,
-        assignment_id=assignment_id,
-    )
-
-    if submission:
-
-     if submission.status == "Submitted":
-        raise ValueError(
-            "You have already submitted this assignment."
-        )
-
-     if submission.started_at is None:
-        submission.started_at = datetime.now(timezone.utc)
-
-        db.commit()
-        db.refresh(submission)
-
-    return submission
-
-    # -----------------------------------------------------
-    # Calculate total marks
-    # -----------------------------------------------------
-
-    total_marks = sum(
-        question.max_marks
-        for question in assignment.questions
-    )
-
-    # -----------------------------------------------------
-    # Create submission
-    # -----------------------------------------------------
-
-    submission = DescriptiveSubmission(
-        assignment_id=assignment_id,
-        student_id=student_id,
-        status="In Progress",
-        total_marks=total_marks,
-        evaluation_status="Pending",
-        started_at=datetime.now(timezone.utc),
-    )
-
-    db.add(submission)
-
-    try:
-        db.commit()
-        db.refresh(submission)
-
-    except Exception:
-        db.rollback()
-        raise
-
-    return submission
-
-
-# =========================================================
-# SUBMIT DESCRIPTIVE ASSIGNMENT
-# =========================================================
-
-def submit_descriptive_assignment(
-    db: Session,
-    current_user: User,
-    submission_data,
-):
-
-    student_id = get_student_id_from_user(
-        db=db,
-        current_user=current_user,
-    )
-
-    # -----------------------------------------------------
-    # Get assignment
-    # -----------------------------------------------------
-
-    assignment = (
-        db.query(DescriptiveAssignment)
-        .filter(
-            DescriptiveAssignment.id
-            == submission_data.assignment_id,
-
-            DescriptiveAssignment.status
-            == "Published",
-        )
-        .first()
+    print(
+        f"[START-DEBUG] get_student_descriptive_assignment: "
+        f"{time.perf_counter() - step_start:.3f}s"
     )
 
     if not assignment:
@@ -311,174 +221,175 @@ def submit_descriptive_assignment(
             "Descriptive assignment not found."
         )
 
-    # -----------------------------------------------------
-    # Verify student belongs to assigned section
-    # -----------------------------------------------------
+    # =====================================================
+    # 3. FIXED EXAM WINDOW
+    #
+    # Teacher defines:
+    #
+    # start_date_time -> exam start
+    # due_date        -> exam end
+    # =====================================================
 
-    student = (
-        db.query(Student)
-        .filter(
-            Student.id == student_id
-        )
-        .first()
-    )
-
-    if not student:
+    if not assignment.start_date_time:
         raise ValueError(
-            "Student not found."
+            "This assignment does not have a start date and time."
         )
 
-    section_mapping = (
-        db.query(DescriptiveAssignmentSection)
-        .filter(
-            DescriptiveAssignmentSection.assignment_id
-            == assignment.id,
-
-            DescriptiveAssignmentSection.section_id
-            == student.section_id,
-        )
-        .first()
-    )
-
-    if not section_mapping:
+    if not assignment.due_date:
         raise ValueError(
-            "This assignment is not assigned to your section."
+            "This assignment does not have an end date and time."
+        )
+
+    start_date_time = assignment.start_date_time
+    due_date = assignment.due_date
+
+    # -----------------------------------------------------
+    # Normalize start time to UTC
+    # -----------------------------------------------------
+
+    if start_date_time.tzinfo is None:
+        start_date_time = start_date_time.replace(
+            tzinfo=timezone.utc
+        )
+    else:
+        start_date_time = start_date_time.astimezone(
+            timezone.utc
         )
 
     # -----------------------------------------------------
-    # Get submission
+    # Normalize end time to UTC
     # -----------------------------------------------------
 
-    submission = (
-        db.query(DescriptiveSubmission)
-        .filter(
-            DescriptiveSubmission.id
-            == submission_data.submission_id,
-
-            DescriptiveSubmission.student_id
-            == student_id,
-
-            DescriptiveSubmission.assignment_id
-            == assignment.id,
+    if due_date.tzinfo is None:
+        due_date = due_date.replace(
+            tzinfo=timezone.utc
         )
-        .first()
-    )
-
-    if not submission:
-        raise ValueError(
-            "Submission not found."
+    else:
+        due_date = due_date.astimezone(
+            timezone.utc
         )
-
-    # -----------------------------------------------------
-    # Prevent duplicate submission
-    # -----------------------------------------------------
-
-    if submission.status == "Submitted":
-        raise ValueError(
-            "This assignment has already been submitted."
-        )
-
-    # -----------------------------------------------------
-    # Check due date
-    # -----------------------------------------------------
 
     now = datetime.now(timezone.utc)
 
-    if assignment.due_date:
+    # =====================================================
+    # 4. TOO EARLY
+    # =====================================================
 
-        due_date = assignment.due_date
+    if now < start_date_time:
+        raise ValueError(
+            "The examination has not started yet."
+        )
 
-        if due_date.tzinfo is None:
-            due_date = due_date.replace(
-                tzinfo=timezone.utc
-            )
+    # =====================================================
+    # 5. TOO LATE
+    # =====================================================
 
-        if now > due_date:
+    if now >= due_date:
+        raise ValueError(
+            "The time limit for this assignment has expired."
+        )
+
+    # =====================================================
+    # 6. FIND EXISTING SUBMISSION
+    # =====================================================
+
+    submission = get_existing_submission(
+        db=db,
+        student_id=student_id,
+        assignment_id=assignment_id,
+    )
+    print(
+    f"[START-DEBUG] get_existing_submission: "
+    f"{time.perf_counter() - step_start:.3f}s"
+)
+
+    # =====================================================
+    # 7. EXISTING SUBMISSION
+    # =====================================================
+
+    if submission:
+
+        if submission.status == "Submitted":
             raise ValueError(
-                "This assignment is past its due date."
+                "You have already submitted this assignment."
             )
 
-    # -----------------------------------------------------
-    # Validate questions
-    # -----------------------------------------------------
+        # Student is starting now.
+        # This is the ACTUAL click/start time.
+        if submission.started_at is None:
 
-    assignment_question_ids = {
-        question.id
+            submission.started_at = now
+
+        submission.status = "In Progress"
+
+        try:
+            db.commit()
+            db.refresh(submission)
+            print(
+    f"[START-DEBUG] commit + refresh: "
+    f"{time.perf_counter() - step_start:.3f}s"
+)  
+            print(
+    f"[START-DEBUG] TOTAL: "
+    f"{time.perf_counter() - overall_start:.3f}s"
+)
+
+
+        except Exception:
+            db.rollback()
+            raise
+
+        return submission
+
+    # =====================================================
+    # 8. CALCULATE TOTAL MARKS
+    # =====================================================
+
+    total_marks = sum(
+        question.max_marks
         for question in assignment.questions
-    }
-
-    submitted_question_ids = {
-        answer.question_id
-        for answer in submission_data.answers
-    }
-
-    invalid_questions = (
-        submitted_question_ids
-        - assignment_question_ids
     )
 
-    if invalid_questions:
+    # =====================================================
+    # 9. CREATE SUBMISSION
+    # =====================================================
 
-        raise ValueError(
-            "One or more submitted questions do not "
-            "belong to this assignment."
-        )
+    submission = DescriptiveSubmission(
+        assignment_id=assignment_id,
+        student_id=student_id,
+        status="In Progress",
+        total_marks=total_marks,
+        evaluation_status="Pending",
 
-    # -----------------------------------------------------
-    # Create answers
-    # -----------------------------------------------------
+        # IMPORTANT:
+        # Actual student start/click time.
+        started_at=now,
+    )
 
-    for answer_data in submission_data.answers:
+    db.add(submission)
 
-        existing_answer = (
-            db.query(DescriptiveAnswer)
-            .filter(
-                DescriptiveAnswer.submission_id
-                == submission.id,
-
-                DescriptiveAnswer.question_id
-                == answer_data.question_id,
-            )
-            .first()
-        )
-
-        if existing_answer:
-
-            existing_answer.answer_text = (
-                answer_data.answer_text
-            )
-
-        else:
-
-            answer = DescriptiveAnswer(
-                submission_id=submission.id,
-                question_id=answer_data.question_id,
-                answer_text=answer_data.answer_text,
-                evaluation_status="Pending",
-            )
-
-            db.add(answer)
-
-    # -----------------------------------------------------
-    # Mark submission as submitted
-    # -----------------------------------------------------
-
-    submission.status = "Submitted"
-    submission.submitted_at = datetime.now(timezone.utc)
-    submission.evaluation_status = "Pending"
+    commit_start = time.perf_counter()
 
     try:
 
         db.commit()
+        print(
+    f"[START-DEBUG] ONLY db.commit(): "
+    f"{time.perf_counter() - commit_start:.3f}s"
+)     
+        refresh_start = time.perf_counter()
         db.refresh(submission)
+        print(
+    f"[START-DEBUG] ONLY db.refresh(): "
+    f"{time.perf_counter() - refresh_start:.3f}s"
+)
 
     except Exception:
+
         db.rollback()
         raise
 
     return submission
-
-
 # =========================================================
 # GET STUDENT SUBMISSION
 # =========================================================

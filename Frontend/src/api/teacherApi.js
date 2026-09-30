@@ -470,9 +470,31 @@ export const getTeacherDescriptiveSections = async () => {
 
 
 // Create descriptive assignment
-export const createTeacherDescriptiveAssignment = async (data) => {
+// ============================================================
+// CREATE MANUAL DESCRIPTIVE ASSIGNMENT
+// ============================================================
+
+export const createManualDescriptiveAssignment = async (
+    data
+) => {
     const response = await api.post(
-        "/teachers/descriptive-assignments",
+        "/teachers/descriptive-assignments/manual",
+        data
+    );
+
+    return response.data;
+};
+
+
+// ============================================================
+// CREATE PDF DESCRIPTIVE ASSIGNMENT
+// ============================================================
+
+export const createPdfDescriptiveAssignment = async (
+    data
+) => {
+    const response = await api.post(
+        "/teachers/descriptive-assignments/pdf",
         data
     );
 
@@ -574,6 +596,16 @@ export const generateTopicQuiz = async (data) => {
     const response = await api.post(
         "/generate-topic-quiz",
         data
+    );
+
+    return response.data;
+};
+
+export const deleteDescriptiveAssignment = async (
+    assignmentId
+) => {
+    const response = await api.delete(
+        `/teachers/descriptive-assignments/${assignmentId}`
     );
 
     return response.data;

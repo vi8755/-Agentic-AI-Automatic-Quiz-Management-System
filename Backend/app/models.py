@@ -756,6 +756,10 @@ class DescriptiveAssignment(Base):
         default="Draft",
         nullable=False,
     )
+    start_date_time = Column(
+    DateTime(timezone=True),
+    nullable=True,
+    )
 
     due_date = Column(
         DateTime(timezone=True),
@@ -1186,4 +1190,150 @@ class DescriptiveAnswerAttachment(Base):
     answer = relationship(
         "DescriptiveAnswer",
         back_populates="attachments",
+    )
+
+class DescriptiveEvaluationJob(Base):
+    __tablename__ = "descriptive_evaluation_jobs"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    submission_id = Column(
+        Integer,
+        ForeignKey("descriptive_submissions.id"),
+        nullable=False,
+        index=True,
+    )
+
+    job_type = Column(
+        String,
+        nullable=False,
+        default="MANUAL",
+    )
+
+    status = Column(
+        String,
+        nullable=False,
+        default="PENDING",
+        index=True,
+    )
+
+    attempts = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    max_attempts = Column(
+        Integer,
+        nullable=False,
+        default=3,
+    )
+
+    locked_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    last_error = Column(
+        String,
+        nullable=True,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    completed_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    submission = relationship(
+        "DescriptiveSubmission",
+        backref="evaluation_jobs",
+    )
+
+class DescriptiveEvaluationLog(Base):
+    __tablename__ = "descriptive_evaluation_logs"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    job_id = Column(
+        Integer,
+        ForeignKey("descriptive_evaluation_jobs.id"),
+        nullable=False,
+        index=True,
+    )
+
+    submission_id = Column(
+        Integer,
+        ForeignKey("descriptive_submissions.id"),
+        nullable=False,
+        index=True,
+    )
+
+    worker_id = Column(
+        Integer,
+        nullable=True,
+    )
+
+    job_type = Column(
+        String,
+        nullable=False,
+    )
+
+    status = Column(
+        String,
+        nullable=False,
+    )
+
+    attempt = Column(
+        Integer,
+        nullable=False,
+    )
+
+    started_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    completed_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    duration_seconds = Column(
+        Float,
+        nullable=True,
+    )
+
+    error = Column(
+        String,
+        nullable=True,
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    job = relationship(
+        "DescriptiveEvaluationJob",
+        backref="execution_logs",
+    )
+
+    submission = relationship(
+        "DescriptiveSubmission",
+        backref="evaluation_logs",
     )

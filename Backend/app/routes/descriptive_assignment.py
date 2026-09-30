@@ -23,7 +23,9 @@ from ..schemas import (
 
 from ..services.descriptive_assignment_service import (
     get_teacher_id_from_user,
-    create_descriptive_assignment,
+    create_manual_descriptive_assignment,
+    create_pdf_descriptive_assignment,
+
     get_teacher_descriptive_assignments,
     get_teacher_descriptive_assignment,
     update_descriptive_assignment,
@@ -298,5 +300,65 @@ def delete_assignment(
 
         raise HTTPException(
             status_code=404,
+            detail=str(e),
+        )
+
+# =========================================================
+# CREATE MANUAL DESCRIPTIVE ASSIGNMENT
+# =========================================================
+
+@router.post(
+    "/manual",
+    response_model=DescriptiveAssignmentResponse,
+)
+def create_manual_assignment(
+    assignment_data: DescriptiveAssignmentCreate,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+
+        return create_manual_descriptive_assignment(
+            db=db,
+            current_user=current_user,
+            assignment_data=assignment_data,
+        )
+
+    except ValueError as e:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+# =========================================================
+# CREATE PDF DESCRIPTIVE ASSIGNMENT
+# =========================================================
+
+@router.post(
+    "/pdf",
+    response_model=DescriptiveAssignmentResponse,
+)
+def create_pdf_assignment(
+    assignment_data: DescriptiveAssignmentCreate,
+    current_user: User = Depends(
+        require_role(UserRole.TEACHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+
+        return create_pdf_descriptive_assignment(
+            db=db,
+            current_user=current_user,
+            assignment_data=assignment_data,
+        )
+
+    except ValueError as e:
+
+        raise HTTPException(
+            status_code=400,
             detail=str(e),
         )

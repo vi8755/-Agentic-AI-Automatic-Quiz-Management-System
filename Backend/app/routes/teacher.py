@@ -1242,315 +1242,338 @@ def get_teacher_descriptive_sections(
 # CREATE DESCRIPTIVE ASSIGNMENT
 # =========================================================
 
-@router.post(
-    "/descriptive-assignments"
-)
-def create_descriptive_assignment(
-    data: DescriptiveAssignmentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(
-        get_current_user
-    ),
-):
-    # =====================================================
-    # FIND TEACHER
-    # =====================================================
-
-    teacher = (
-        db.query(Teacher)
-        .filter(
-            Teacher.user_id == current_user.id
-        )
-        .first()
-    )
-
-    if not teacher:
-        raise HTTPException(
-            status_code=404,
-            detail="Teacher not found.",
-        )
-
-    # =====================================================
-    # VALIDATE ASSIGNMENT TYPE
-    # =====================================================
-
-    assignment_type = (
-        data.assignment_type.upper()
-        if data.assignment_type
-        else ""
-    )
-
-    if assignment_type not in [
-        "MANUAL",
-        "PDF",
-    ]:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid assignment type. "
-                "Use MANUAL or PDF."
-            ),
-        )
-
-     # =====================================================
-# MANUAL VALIDATION
-# =====================================================
-
-    if assignment_type == "MANUAL":
-
-     if not data.questions:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Manual assignment must "
-                "contain questions."
-            ),
-        )
-
-    if not data.duration_minutes:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Duration is required "
-                "for manual assignments."
-            ),
-        )
-
-    if data.duration_minutes <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Duration must be greater than 0 minutes."
-            ),
-        )
-
-    # =====================================================
-    # PDF VALIDATION
-    # =====================================================
-
-    if assignment_type == "PDF":
-
-        if not data.question_pdf_url:
-
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Question PDF is required "
-                    "for PDF assignment."
-                ),
-            )
-
-    # =====================================================
-    # CREATE ASSIGNMENT
-    # =====================================================
-
-    assignment = DescriptiveAssignment(
-        teacher_id=teacher.id,
-        subject_id=data.subject_id,
-        title=data.title,
-        instructions=data.instructions,
-        due_date=data.due_date,
-        status="Draft",
-
-        assignment_type=assignment_type,
-        duration_minutes=data.duration_minutes,
-
-        question_pdf_url=(
-            data.question_pdf_url
-            if assignment_type == "PDF"
-            else None
-        ),
-
-        question_pdf_name=(
-            data.question_pdf_name
-            if assignment_type == "PDF"
-            else None
-        ),
-    )
-
-    db.add(assignment)
-
-    # Get assignment.id
-    db.flush()
-
-    # =====================================================
-    # MANUAL QUESTIONS
-    # =====================================================
-
-    if assignment_type == "MANUAL":
-
-        for question in data.questions:
-
-            db.add(
-                DescriptiveAssignmentQuestion(
-                    assignment_id=assignment.id,
-
-                    question_text=(
-                        question.question_text
-                    ),
-
-                    max_marks=(
-                        question.max_marks
-                    ),
-
-                    expected_answer=(
-                        question.expected_answer
-                    ),
-
-                    evaluation_rubric=(
-                        question.evaluation_rubric
-                    ),
-
-                    question_order=(
-                        question.question_order
-                    ),
-                )
-            )
-
-    # =====================================================
-    # PDF QUESTIONS
-    # =====================================================
-
-    elif assignment_type == "PDF":
-
-        try:
-
-            # -------------------------------------------------
-            # IMPORTANT:
-            #
-            # First extract the ACTUAL TEXT from the PDF.
-            #
-            # Do NOT pass question_pdf_url directly to
-            # extract_questions_from_pdf().
-            # -------------------------------------------------
-
-            from ..services.descriptive_evaluation_service import (
-                extract_pdf_text,
-                extract_questions_from_pdf,
-            )
-
-            question_pdf_text = (
-                extract_pdf_text(
-                    data.question_pdf_url
-                )
-            )
-
-            if not question_pdf_text:
-
-                raise ValueError(
-                    "No readable text could be extracted "
-                    "from the question PDF."
-                )
-
-            # -------------------------------------------------
-            # Now extract actual questions from the text
-            # -------------------------------------------------
-
-            pdf_questions = (
-                extract_questions_from_pdf(
-                    question_pdf_text
-                )
-            )
-
-            if not pdf_questions:
-
-                raise ValueError(
-                    "No questions could be extracted "
-                    "from the question PDF."
-                )
-
-        except Exception as e:
-
-            db.rollback()
-
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Unable to extract questions from "
-                    f"question PDF: {str(e)}"
-                ),
-            )
-
-        # -------------------------------------------------
-        # CREATE DATABASE QUESTION RECORDS
-        # -------------------------------------------------
-
-        for question in pdf_questions:
-
-            db.add(
-                DescriptiveAssignmentQuestion(
-                    assignment_id=assignment.id,
-
-                    question_text=(
-                        question[
-                            "question_text"
-                        ]
-                    ),
-
-                    # IMPORTANT:
-                    # Use marks extracted from PDF
-                    max_marks=(
-                        question.get(
-                            "max_marks",
-                            10,
-                        )
-                    ),
-
-                    expected_answer=(
-                        question.get(
-                            "expected_answer"
-                        )
-                    ),
-
-                    evaluation_rubric=(
-                        question.get(
-                            "evaluation_rubric"
-                        )
-                    ),
-
-                    question_order=(
-                        question[
-                            "question_order"
-                        ]
-                    ),
-                )
-            )
-
-    # =====================================================
-    # SAVE
-    # =====================================================
-
-    db.commit()
-
-    db.refresh(assignment)
-
-    # =====================================================
-    # RESPONSE
-    # =====================================================
-
-    return {
-        "id": assignment.id,
-
-        "title": assignment.title,
-
-        "status": assignment.status,
-
-        "assignment_type": (
-            assignment.assignment_type
-        ),
-
-        "question_pdf_url": (
-            assignment.question_pdf_url
-        ),
-
-        "question_pdf_name": (
-            assignment.question_pdf_name
-        ),
-
-        "message": (
-            "Assignment created successfully."
-        ),
-    }
+# @router.post(
+#     "/descriptive-assignments"
+# )
+# def create_descriptive_assignment(
+#     data: DescriptiveAssignmentCreate,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(
+#         get_current_user
+#     ),
+# ):
+#     # =====================================================
+#     # FIND TEACHER
+#     # =====================================================
+
+#     teacher = (
+#         db.query(Teacher)
+#         .filter(
+#             Teacher.user_id == current_user.id
+#         )
+#         .first()
+#     )
+
+#     if not teacher:
+#         raise HTTPException(
+#             status_code=404,
+#             detail="Teacher not found.",
+#         )
+
+#     # =====================================================
+#     # VALIDATE ASSIGNMENT TYPE
+#     # =====================================================
+
+#     assignment_type = (
+#         data.assignment_type.upper()
+#         if data.assignment_type
+#         else ""
+#     )
+
+#     if assignment_type not in [
+#         "MANUAL",
+#         "PDF",
+#     ]:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=(
+#                 "Invalid assignment type. "
+#                 "Use MANUAL or PDF."
+#             ),
+#         )
+
+# # =====================================================
+# # MANUAL VALIDATION
+# # =====================================================
+
+#     if assignment_type == "MANUAL":
+
+#      if not data.questions:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=(
+#                 "Manual assignment must "
+#                 "contain questions."
+#             ),
+#         )
+
+#     if not data.duration_minutes:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=(
+#                 "Duration is required "
+#                 "for manual assignments."
+#             ),
+#         )
+
+#     if data.duration_minutes <= 0:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=(
+#                 "Duration must be greater than 0 minutes."
+#             ),
+#         )
+
+
+# # =====================================================
+# # PDF VALIDATION
+# # =====================================================
+
+#     if assignment_type == "PDF":
+ 
+#      if not data.question_pdf_url:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=(
+#                 "Question PDF is required "
+#                 "for PDF assignment."
+#             ),
+#         )
+
+     
+
+#     # =====================================================
+#     # PDF VALIDATION
+#     # =====================================================
+
+#     if assignment_type == "PDF":
+
+#         if not data.question_pdf_url:
+
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=(
+#                     "Question PDF is required "
+#                     "for PDF assignment."
+#                 ),
+#             )
+
+#     # =====================================================
+#     # CREATE ASSIGNMENT
+#     # =====================================================
+
+#     assignment = DescriptiveAssignment(
+#         teacher_id=teacher.id,
+#         subject_id=data.subject_id,
+#         title=data.title,
+#         instructions=data.instructions,
+#         due_date=data.due_date,
+#         status="Draft",
+
+#         assignment_type=assignment_type,
+
+#        duration_minutes=(
+#         data.duration_minutes
+#         if assignment_type == "MANUAL"
+#         else None
+#         ),
+
+#         question_pdf_url=(
+#             data.question_pdf_url
+#             if assignment_type == "PDF"
+#             else None
+#         ),
+
+#         question_pdf_name=(
+#             data.question_pdf_name
+#             if assignment_type == "PDF"
+#             else None
+#         ),
+#     )
+
+#     db.add(assignment)
+
+#     # Get assignment.id
+#     db.flush()
+
+#     # =====================================================
+#     # MANUAL QUESTIONS
+#     # =====================================================
+
+#     if assignment_type == "MANUAL":
+
+#         for question in data.questions:
+
+#             db.add(
+#                 DescriptiveAssignmentQuestion(
+#                     assignment_id=assignment.id,
+
+#                     question_text=(
+#                         question.question_text
+#                     ),
+
+#                     max_marks=(
+#                         question.max_marks
+#                     ),
+
+#                     expected_answer=(
+#                         question.expected_answer
+#                     ),
+
+#                     evaluation_rubric=(
+#                         question.evaluation_rubric
+#                     ),
+
+#                     question_order=(
+#                         question.question_order
+#                     ),
+#                 )
+#             )
+
+#     # =====================================================
+#     # PDF QUESTIONS
+#     # =====================================================
+
+#     elif assignment_type == "PDF":
+
+#         try:
+
+#             # -------------------------------------------------
+#             # IMPORTANT:
+#             #
+#             # First extract the ACTUAL TEXT from the PDF.
+#             #
+#             # Do NOT pass question_pdf_url directly to
+#             # extract_questions_from_pdf().
+#             # -------------------------------------------------
+
+#             from ..services.descriptive_evaluation_service import (
+#                 extract_pdf_text,
+#                 extract_questions_from_pdf,
+#             )
+
+#             question_pdf_text = (
+#                 extract_pdf_text(
+#                     data.question_pdf_url
+#                 )
+#             )
+
+#             if not question_pdf_text:
+
+#                 raise ValueError(
+#                     "No readable text could be extracted "
+#                     "from the question PDF."
+#                 )
+
+#             # -------------------------------------------------
+#             # Now extract actual questions from the text
+#             # -------------------------------------------------
+
+#             pdf_questions = (
+#                 extract_questions_from_pdf(
+#                     question_pdf_text
+#                 )
+#             )
+
+#             if not pdf_questions:
+
+#                 raise ValueError(
+#                     "No questions could be extracted "
+#                     "from the question PDF."
+#                 )
+
+#         except Exception as e:
+
+#             db.rollback()
+
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=(
+#                     "Unable to extract questions from "
+#                     f"question PDF: {str(e)}"
+#                 ),
+#             )
+
+#         # -------------------------------------------------
+#         # CREATE DATABASE QUESTION RECORDS
+#         # -------------------------------------------------
+
+#         for question in pdf_questions:
+
+#             db.add(
+#                 DescriptiveAssignmentQuestion(
+#                     assignment_id=assignment.id,
+
+#                     question_text=(
+#                         question[
+#                             "question_text"
+#                         ]
+#                     ),
+
+#                     # IMPORTANT:
+#                     # Use marks extracted from PDF
+#                     max_marks=(
+#                         question.get(
+#                             "max_marks",
+#                             10,
+#                         )
+#                     ),
+
+#                     expected_answer=(
+#                         question.get(
+#                             "expected_answer"
+#                         )
+#                     ),
+
+#                     evaluation_rubric=(
+#                         question.get(
+#                             "evaluation_rubric"
+#                         )
+#                     ),
+
+#                     question_order=(
+#                         question[
+#                             "question_order"
+#                         ]
+#                     ),
+#                 )
+#             )
+
+#     # =====================================================
+#     # SAVE
+#     # =====================================================
+
+#     db.commit()
+
+#     db.refresh(assignment)
+
+#     # =====================================================
+#     # RESPONSE
+#     # =====================================================
+
+#     return {
+#         "id": assignment.id,
+
+#         "title": assignment.title,
+
+#         "status": assignment.status,
+
+#         "assignment_type": (
+#             assignment.assignment_type
+#         ),
+
+#         "question_pdf_url": (
+#             assignment.question_pdf_url
+#         ),
+
+#         "question_pdf_name": (
+#             assignment.question_pdf_name
+#         ),
+
+#         "message": (
+#             "Assignment created successfully."
+#         ),
+#     }
 
 @router.get(
     "/descriptive-assignments/{assignment_id}"

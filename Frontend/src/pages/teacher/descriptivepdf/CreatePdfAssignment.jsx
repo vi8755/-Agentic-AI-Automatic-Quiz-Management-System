@@ -16,7 +16,7 @@ import { toast } from "react-toastify";
 import {
      getTeacherDescriptiveSections,
     uploadDescriptiveQuestionPdf,
-    createTeacherDescriptiveAssignment,
+    createPdfDescriptiveAssignment,
     publishDescriptiveAssignment,
 } from "../../../api/teacherApi";
 
@@ -40,8 +40,6 @@ const CreatePdfAssignment = () => {
         subject_id: "",
         instructions: "",
         due_date: "",
-        duration_value: "",
-        duration_unit: "minutes",
         section_ids: [],
     });
 
@@ -264,31 +262,12 @@ const CreatePdfAssignment = () => {
         );
         return false;
     }
-
-    // =========================================
-    // DURATION VALIDATION
-    // =========================================
-
-    if (
-        !formData.duration_value ||
-        Number(formData.duration_value) <= 0
-    ) {
-        toast.error(
-            "Please enter a valid exam duration."
-        );
-        return false;
-    }
-
-    if (
-        !["minutes", "hours", "days"].includes(
-            formData.duration_unit
-        )
-    ) {
-        toast.error(
-            "Please select a valid duration unit."
-        );
-        return false;
-    }
+    if (!formData.due_date) {
+    toast.error(
+        "Please select a due date and time."
+    );
+    return false;
+}
 
     // =========================================
     // SECTION VALIDATION
@@ -313,17 +292,7 @@ const CreatePdfAssignment = () => {
     if (!validate()) {
         return;
     }
-    let durationMinutes;
-
-if (formData.duration_unit === "minutes") {
-    durationMinutes = Number(formData.duration_value);
-} else if (formData.duration_unit === "hours") {
-    durationMinutes =
-        Number(formData.duration_value) * 60;
-} else if (formData.duration_unit === "days") {
-    durationMinutes =
-        Number(formData.duration_value) * 24 * 60;
-}
+    
 
     try {
         setSaving(true);
@@ -340,8 +309,7 @@ if (formData.duration_unit === "minutes") {
     ),
 
     instructions:
-        formData.instructions?.trim() ||
-        null,
+        formData.instructions?.trim() || null,
 
     due_date: formData.due_date
         ? new Date(
@@ -349,8 +317,7 @@ if (formData.duration_unit === "minutes") {
           ).toISOString()
         : null,
 
-
-    duration_minutes: durationMinutes,
+    // IMPORTANT: This is a PDF assignment
     assignment_type: "PDF",
 
     question_pdf_url:
@@ -359,12 +326,11 @@ if (formData.duration_unit === "minutes") {
     question_pdf_name:
         uploadedPdf.file_name,
 
-    // IMPORTANT
     section_ids: formData.section_ids,
 
-    // IMPORTANT
     academic_year: "2026-27",
 
+    // Questions are extracted from the uploaded PDF
     questions: [],
 };
 
@@ -374,7 +340,7 @@ if (formData.duration_unit === "minutes") {
         );
 
         const assignment =
-            await createTeacherDescriptiveAssignment(
+            await createPdfDescriptiveAssignment(
                 payload
             );
 
@@ -566,38 +532,7 @@ if (formData.duration_unit === "minutes") {
                         {/* DURATION */}
  {/* DURATION */}
 
-<div>
-    <label className="block text-sm font-medium mb-2">
-        Exam Duration
-    </label>
-
-    <div className="flex gap-3">
-        <input
-            type="number"
-            name="duration_value"
-            value={formData.duration_value}
-            onChange={handleChange}
-            min="1"
-            placeholder="e.g. 60"
-            className="flex-1 border rounded-xl px-4 py-3 focus:ring-2 focus:ring-purple-500 outline-none"
-        />
-
-        <select
-            name="duration_unit"
-            value={formData.duration_unit}
-            onChange={handleChange}
-            className="w-36 border rounded-xl px-4 py-3 focus:ring-2 focus:ring-purple-500 outline-none"
-        >
-            <option value="minutes">Minutes</option>
-            <option value="hours">Hours</option>
-            <option value="days">Days</option>
-        </select>
-    </div>
-
-    <p className="mt-1 text-xs text-gray-500">
-        Choose how long students have to complete the examination.
-    </p>
-</div>
+ 
 
                     </div>
                 </div>

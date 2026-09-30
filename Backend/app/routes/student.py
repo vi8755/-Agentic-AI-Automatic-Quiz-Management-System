@@ -5,12 +5,13 @@ from fastapi import (
     File,
     UploadFile,
 )
+from sqlalchemy import text
 import os
 import uuid
 from sqlalchemy.orm import Session
 from datetime import datetime
-from ..database import SessionLocal
-
+from ..database import SessionLocal,get_db
+from fastapi import BackgroundTasks
 from ..models import (
     User,
     UserRole,
@@ -42,6 +43,10 @@ from ..schemas import (
 from ..services.descriptive_evaluation_service import (
     evaluate_descriptive_submission,
     evaluate_descriptive_pdf_submission,
+)
+
+from ..services.descriptive_evaluation_queue import (
+    create_evaluation_job,
 )
 from ..services.student_service import (
     register_student,
@@ -75,21 +80,95 @@ router = APIRouter(
     tags=["Students"],
 )
 
+ 
 
-# =========================================================
-# DATABASE
-# =========================================================
 
-def get_db():
+@router.get("/db-test")
+def db_test(db: Session = Depends(get_db)):
+    result = db.execute(
+        text("""
+            SELECT id, assignment_id, question_order
+            FROM descriptive_assignment_questions
+            WHERE assignment_id = 50
+            ORDER BY question_order
+        """)
+    )
+
+    rows = result.fetchall()
+
+    return {
+        "count": len(rows),
+        "questions": [
+            {
+                "id": row.id,
+                "assignment_id": row.assignment_id,
+                "question_order": row.question_order,
+            }
+            for row in rows
+        ],
+    }
+
+def run_descriptive_evaluation_background(
+    submission_id: int,
+):
     db = SessionLocal()
 
     try:
-        yield db
+        evaluate_descriptive_submission(
+            submission_id=submission_id,
+            db=db,
+        )
+
+    except Exception as e:
+        print(
+            f"DESCRIPTIVE EVALUATION FAILED "
+            f"for submission {submission_id}: {e}"
+        )
 
     finally:
         db.close()
 
+def run_descriptive_pdf_evaluation_background(submission_id: int):
+    db = SessionLocal()
 
+    try:
+        print(
+            "\n=========================================="
+        )
+        print(
+            "STARTING PDF DESCRIPTIVE EVALUATION"
+        )
+        print(
+            f"Submission ID: {submission_id}"
+        )
+        print(
+            "==========================================\n"
+        )
+
+        evaluate_descriptive_pdf_submission(
+            submission_id=submission_id,
+            db=db,
+        )
+
+    except Exception as e:
+        print(
+            "\n=========================================="
+        )
+        print(
+            "PDF DESCRIPTIVE EVALUATION FAILED"
+        )
+        print(
+            f"Submission ID: {submission_id}"
+        )
+        print(
+            f"Error: {e}"
+        )
+        print(
+            "==========================================\n"
+        )
+
+    finally:
+        db.close()
 # =========================================================
 # STUDENT REGISTRATION
 # =========================================================
@@ -321,7 +400,6 @@ def get_student_descriptive_assignment_api(
 #     ]
 # }
 # ---------------------------------------------------------
-
 @router.post(
     "/descriptive-assignments/submit",
     response_model=DescriptiveSubmissionResponse,
@@ -333,11 +411,19 @@ def submit_student_descriptive_assignment_api(
     ),
     db: Session = Depends(get_db),
 ):
-    return submit_student_descriptive_assignment(
+    submission = submit_student_descriptive_assignment(
         user_id=current_user.id,
         submission_data=submission_data,
         db=db,
     )
+
+    create_evaluation_job(
+        db=db,
+        submission_id=submission.id,
+        job_type="MANUAL",
+    )
+
+    return submission
 
 
 # ---------------------------------------------------------
@@ -403,6 +489,7 @@ def get_student_api(
             detail=str(e),
         )
 
+ 
 @router.get(
     "/descriptive-assignments/token/{token}"
 )
@@ -446,7 +533,10 @@ def get_descriptive_assignment_by_token(
     if not submission:
         raise HTTPException(
             status_code=404,
-            detail="Invalid assignment link or assignment not assigned to you.",
+            detail=(
+                "Invalid assignment link or assignment "
+                "not assigned to you."
+            ),
         )
 
     # =====================================================
@@ -475,65 +565,114 @@ def get_descriptive_assignment_by_token(
     if assignment.status != "Published":
         raise HTTPException(
             status_code=400,
-            detail="This assignment is not currently available.",
+            detail=(
+                "This assignment is not currently available."
+            ),
         )
 
     # =====================================================
-    # CHECK DUE DATE
+    # CHECK SUBMISSION STATUS
     # =====================================================
-
-    if (
-        assignment.due_date
-        and datetime.utcnow() > assignment.due_date.replace(tzinfo=None)
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="The due date for this assignment has passed.",
-        )
-
- 
- 
-
-    # =====================================================
-# CHECK SUBMISSION STATUS
-# =====================================================
 
     if submission.status == "Submitted":
-     raise HTTPException(
-        status_code=400,
-        detail="This assignment has already been submitted.",
-    )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This assignment has already been submitted."
+            ),
+        )
 
     # =====================================================
-# CALCULATE EXAM EXPIRY
-# =====================================================
+    # DUE DATE / EXAM WINDOW
+    #
+    # Both MANUAL and PDF assignments can have a due date.
+    #
+    # MANUAL:
+    #   start_date_time = exam start
+    #   due_date        = exam end
+    #
+    # PDF:
+    #   due_date        = submission deadline
+    #   no exam timer
+    #
+    # Opening the link does NOT start the exam.
+    # =====================================================
 
-    from datetime import timedelta, timezone
+    from datetime import timezone
 
+    start_date_time = None
     expires_at = None
 
-    if assignment.duration_minutes:
+    # =====================================================
+    # GET DUE DATE FOR BOTH ASSIGNMENT TYPES
+    # =====================================================
 
-     started_at = submission.started_at
+    if assignment.due_date is not None:
 
-    if started_at:
+        expires_at = assignment.due_date
 
-        if started_at.tzinfo is None:
-            started_at_utc = started_at.replace(
+        # ---------------------------------------------
+        # Normalize due date/time to UTC
+        # ---------------------------------------------
+
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(
                 tzinfo=timezone.utc
             )
         else:
-            started_at_utc = started_at.astimezone(
+            expires_at = expires_at.astimezone(
                 timezone.utc
             )
 
-        expires_at = (
-            started_at_utc
-            + timedelta(
-                minutes=assignment.duration_minutes
-            )
-        )
-    
+    # =====================================================
+    # MANUAL ASSIGNMENT EXAM WINDOW
+    # =====================================================
+
+    if assignment.assignment_type == "MANUAL":
+
+        if assignment.start_date_time is not None:
+
+            start_date_time = assignment.start_date_time
+
+            # ---------------------------------------------
+            # Normalize start time
+            # ---------------------------------------------
+
+            if start_date_time.tzinfo is None:
+                start_date_time = start_date_time.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                start_date_time = (
+                    start_date_time.astimezone(
+                        timezone.utc
+                    )
+                )
+
+            # ---------------------------------------------
+            # DO NOT reject before start time.
+            #
+            # Student must be able to open the page
+            # and see the countdown.
+            # ---------------------------------------------
+
+            current_time = datetime.now(timezone.utc)
+
+            # ---------------------------------------------
+            # Reject only after the fixed exam end.
+            # ---------------------------------------------
+
+            if (
+                expires_at is not None
+                and current_time >= expires_at
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "The time limit for this assignment "
+                        "has expired."
+                    ),
+                )
 
     # =====================================================
     # PREPARE QUESTIONS
@@ -557,33 +696,65 @@ def get_descriptive_assignment_by_token(
     # =====================================================
 
     return {
-    "submission_id": submission.id,
-    "assignment_id": assignment.id,
+        "submission_id": submission.id,
 
-    "title": assignment.title,
+        "assignment_id": assignment.id,
 
-    "instructions": assignment.instructions,
+        "title": assignment.title,
 
-    "due_date": assignment.due_date,
+        "instructions": assignment.instructions,
 
-    # =====================================================
-    # PDF QUESTION PAPER
-    # =====================================================
+        # =================================================
+        # DATE / TIME
+        # =================================================
 
-    "question_pdf_url": assignment.question_pdf_url,
-    "question_pdf_name": assignment.question_pdf_name,
+        "start_date_time": start_date_time,
 
-    "status": submission.status,
+        "due_date": expires_at,
 
-    "evaluation_status": submission.evaluation_status,
+        "duration_minutes": assignment.duration_minutes,
 
-    "started_at": submission.started_at,
-    "duration_minutes": assignment.duration_minutes,
+        # =================================================
+        # ASSIGNMENT TYPE
+        # =================================================
 
-    "expires_at": expires_at,
+        "assignment_type": assignment.assignment_type,
 
-    "questions": questions,
-}
+        # =================================================
+        # PDF QUESTION PAPER
+        # =================================================
+
+        "question_pdf_url": assignment.question_pdf_url,
+
+        "question_pdf_name": assignment.question_pdf_name,
+
+        # =================================================
+        # SUBMISSION
+        # =================================================
+
+        "status": submission.status,
+
+        "evaluation_status": submission.evaluation_status,
+
+        # =================================================
+        # TIMER
+        # =================================================
+
+        # This remains NULL until the student actually
+        # clicks Start Test.
+
+        "started_at": submission.started_at,
+
+        # Fixed examination/submission end time.
+
+        "expires_at": expires_at,
+
+        # =================================================
+        # QUESTIONS
+        # =================================================
+
+        "questions": questions,
+    }
 # =========================================================
 # START DESCRIPTIVE ASSIGNMENT
 # =========================================================
@@ -607,10 +778,11 @@ def start_student_descriptive_assignment(
         )
 
         return {
-            "submission_id": submission.id,
-            "assignment_id": submission.assignment_id,
-            "status": submission.status,
-            "started_at": submission.started_at,
+              "submission_id": submission.id,
+    "assignment_id": submission.assignment_id,
+    "status": submission.status,
+    "started_at": submission.started_at,
+    "expires_at": submission.assignment.due_date,
         }
 
     except ValueError as e:
@@ -628,6 +800,7 @@ def start_student_descriptive_assignment(
 )
 async def submit_student_descriptive_assignment_pdf(
     assignment_id: int,
+
     file: UploadFile = File(...),
     current_user: User = Depends(
         require_role(UserRole.STUDENT)
@@ -912,72 +1085,14 @@ async def submit_student_descriptive_assignment_pdf(
     db.commit()
 
     db.refresh(submission)
+    create_evaluation_job(
+    db=db,
+    submission_id=submission.id,
+    job_type="PDF",
+    )
 
-    # =====================================================
-    # ⭐ PDF AI EVALUATION
-    # =====================================================
-
-    try:
-
-        print(
-            "\n=========================================="
-        )
-
-        print(
-            "STARTING PDF DESCRIPTIVE EVALUATION"
-        )
-
-        print(
-            f"Submission ID: {submission.id}"
-        )
-
-        print(
-            f"Assignment ID: {assignment.id}"
-        )
-
-        print(
-            "==========================================\n"
-        )
-
-        evaluate_descriptive_pdf_submission(
-            submission_id=submission.id,
-            db=db,
-        )
-
-    except Exception as e:
-
-        print(
-            "\n=========================================="
-        )
-
-        print(
-            "PDF DESCRIPTIVE EVALUATION FAILED"
-        )
-
-        print(
-            f"Submission ID: {submission.id}"
-        )
-
-        print(
-            f"Error: {e}"
-        )
-
-        print(
-            "==========================================\n"
-        )
-
-        submission.evaluation_status = (
-            "Failed"
-        )
-
-        db.commit()
-
-    # =====================================================
-    # REFRESH AFTER EVALUATION
-    # =====================================================
-
-    db.refresh(submission)
-
+     
+ 
     # =====================================================
     # RETURN
     # =====================================================
@@ -1024,8 +1139,8 @@ async def submit_student_descriptive_assignment_pdf(
         ),
 
         "message": (
-            "Answer PDF submitted and "
-            "processed successfully."
+              "Answer PDF submitted successfully. "
+             "Evaluation is being processed in the background."
         ),
     }
 

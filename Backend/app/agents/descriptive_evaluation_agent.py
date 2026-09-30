@@ -1,12 +1,12 @@
 import json
 import re
-import os
 
 from langchain_core.messages import HumanMessage
 from langchain_groq import ChatGroq
 
 from ..ai.llm import llm
 from ..ai.prompts import DESCRIPTIVE_EVALUATION_PROMPT
+from ..config import settings
 
 
 def _extract_json(content: str):
@@ -46,7 +46,6 @@ def _extract_json(content: str):
     )
 
     try:
-
         return json.loads(content)
 
     except json.JSONDecodeError:
@@ -59,7 +58,6 @@ def _extract_json(content: str):
         )
 
         if not match:
-
             raise ValueError(
                 "AI returned an invalid JSON response."
             )
@@ -78,7 +76,6 @@ def evaluate_descriptive_answer(
     Evaluate one descriptive answer.
 
     Supports:
-
     - Text-only answers
     - Drawing-only answers
     - Text + drawing answers
@@ -131,14 +128,9 @@ def evaluate_descriptive_answer(
     if drawing_data:
 
         vision_llm = ChatGroq(
-            model=os.getenv(
-                "GROQ_VISION_MODEL",
-                 "qwen/qwen3.8-27b"
-            ),
+            model=settings.GROQ_VISION_MODEL,
             temperature=0,
-            api_key=os.getenv(
-                "GROQ_API_KEY"
-            ),
+            api_key=settings.GROQ_API_KEY,
         )
 
         # --------------------------------------------------------

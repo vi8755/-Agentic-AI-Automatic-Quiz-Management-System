@@ -81,6 +81,7 @@ import AllDescriptivePerformance
     from "./pages/student/AllDescriptivePerformance";
 import QuestionBankQuizGenerator
     from "./pages/teacher/QuestionBankQuizGenerator";
+import DescriptiveSubmissionStatus from "./pages/student/DescriptiveSubmissionStatus";
 function App() {
 
     return (
@@ -389,6 +390,10 @@ function App() {
 <Route
     path="/student/descriptive-assignments/:assignmentId/result"
     element={<StudentDescriptiveResult />}
+/>
+<Route
+    path="/student/descriptive-assignments/:assignmentId/status"
+    element={<DescriptiveSubmissionStatus />}
 />
 <Route
     path="/student/descriptive-assignments/:assignmentId/performance"

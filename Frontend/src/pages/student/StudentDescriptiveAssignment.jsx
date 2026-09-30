@@ -1,4 +1,4 @@
-import { useEffect, useMemo,useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
@@ -41,6 +41,7 @@ const StudentDescriptiveAssignment = () => {
 
     const [submitting, setSubmitting] = useState(false);
     const [timeLeft, setTimeLeft] = useState(null);
+    const [timeUntilStart, setTimeUntilStart] = useState(null);
     const [timeExpired, setTimeExpired] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const autoSubmittedRef = useRef(false);
@@ -54,6 +55,11 @@ const [fullscreenViolationCount, setFullscreenViolationCount] =
     useState(0);
 const [showFullscreenWarning, setShowFullscreenWarning] =
     useState(false);
+
+    const [securityViolationCount, setSecurityViolationCount] = useState(0);
+    const [showSecurityWarning, setShowSecurityWarning] = useState(false);
+    const securityViolationCountRef = useRef(0);
+    const startExamInProgressRef = useRef(false);
 
     const [error, setError] = useState("");
     const [examStarted, setExamStarted] = useState(false);
@@ -211,6 +217,48 @@ const [showFullscreenWarning, setShowFullscreenWarning] =
         }
     };
     // =========================================================
+// PRE-START COUNTDOWN
+// =========================================================
+
+useEffect(() => {
+    if (!assignment?.start_date_time || examStarted || submitted) {
+        setTimeUntilStart(null);
+        return;
+    }
+
+    const updateStartCountdown = () => {
+        const startTime = new Date(
+            assignment.start_date_time
+        ).getTime();
+
+        if (Number.isNaN(startTime)) {
+            setTimeUntilStart(null);
+            return;
+        }
+
+        const remainingSeconds = Math.max(
+            0,
+            Math.ceil((startTime - Date.now()) / 1000)
+        );
+
+        setTimeUntilStart(remainingSeconds);
+    };
+
+    updateStartCountdown();
+
+    const timer = setInterval(
+        updateStartCountdown,
+        1000
+    );
+
+    return () => clearInterval(timer);
+}, [
+    assignment?.start_date_time,
+    examStarted,
+    submitted,
+]);
+
+// =========================================================
 // EXAM TIMER
 // =========================================================
 
@@ -239,26 +287,6 @@ useEffect(() => {
 
         setTimeLeft(remainingSeconds);
 
-        // =================================================
-        // TIME EXPIRED → AUTO SUBMIT IMMEDIATELY
-        // =================================================
-
-        if (
-            remainingSeconds <= 0 &&
-            !autoSubmittedRef.current &&
-            !submitStartedRef.current &&
-            !submitted
-        ) {
-            console.log(
-                "⏰ TIMER REACHED 0 → AUTO SUBMIT"
-            );
-
-            autoSubmittedRef.current = true;
-            setTimeExpired(true);
-
-            // Trigger auto-submit directly when timer reaches 0.
-            handleSubmit(true, "time");
-        }
     };
 
     updateTimer();
@@ -506,7 +534,9 @@ useEffect(() => {
                     ? "Your assignment is being submitted because the exam tab was switched twice."
                     : autoSubmitReason === "fullscreen"
                         ? "Your assignment is being submitted because fullscreen mode was exited twice."
-                        : "Time is over. Your assignment is being submitted automatically.";
+                        : autoSubmitReason === "security"
+                            ? "Your assignment is being submitted because multiple security violations were detected."
+                            : "Time is over. Your assignment is being submitted automatically.";
 
             toast.info(autoSubmitMessage);
         }
@@ -650,7 +680,7 @@ useEffect(() => {
             // -------------------------------------------------
 
             navigate(
-                `/student/descriptive-assignments/${finalAssignmentId}/result`,
+                `/student/descriptive-assignments/${finalAssignmentId}/status`,
                 {
                     replace: true,
                 }
@@ -669,6 +699,95 @@ useEffect(() => {
             toast.error(message);
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    // =========================================================
+    // AUTO SUBMIT WHEN FIXED EXAM WINDOW REACHES ZERO
+    // =========================================================
+
+    useEffect(() => {
+        if (
+            !examStarted ||
+            submitted ||
+            timeLeft !== 0 ||
+            autoSubmittedRef.current ||
+            submitStartedRef.current
+        ) {
+            return;
+        }
+
+        console.log(
+            "⏰ FIXED EXAM WINDOW REACHED 0 → AUTO SUBMIT"
+        );
+
+        autoSubmittedRef.current = true;
+        setTimeExpired(true);
+
+        handleSubmit(true, "time");
+    }, [
+        timeLeft,
+        examStarted,
+        submitted,
+        handleSubmit,
+    ]);
+
+    // =========================================================
+    // BROWSER SECURITY VIOLATION LOGGER
+    // =========================================================
+
+    const recordSecurityViolation = (reason) => {
+        if (!examStarted || submitted || timeExpired) {
+            return;
+        }
+
+        const nextCount = securityViolationCountRef.current + 1;
+        securityViolationCountRef.current = nextCount;
+        setSecurityViolationCount(nextCount);
+        setShowSecurityWarning(true);
+
+        const violation = {
+            reason,
+            count: nextCount,
+            timestamp: new Date().toISOString(),
+        };
+
+        console.warn("DESCRIPTIVE EXAM SECURITY VIOLATION:", violation);
+
+        try {
+            const storageKey = `descriptive_exam_security_${
+                assignment?.assignment_id ?? assignment?.id ?? assignmentId
+            }`;
+
+            const existing = JSON.parse(
+                sessionStorage.getItem(storageKey) || "[]"
+            );
+
+            existing.push(violation);
+
+            sessionStorage.setItem(
+                storageKey,
+                JSON.stringify(existing)
+            );
+        } catch (storageError) {
+            console.warn(
+                "Unable to store security violation locally:",
+                storageError
+            );
+        }
+
+        if (nextCount >= 2 && !autoSubmittedRef.current) {
+            autoSubmittedRef.current = true;
+
+            toast.error(
+                "Multiple security violations detected. Your assignment will be submitted automatically."
+            );
+
+            handleSubmit(true, "security");
+        } else {
+            toast.warning(
+                `Security warning: ${reason}. Further violations may submit your assignment automatically.`
+            );
         }
     };
 
@@ -754,6 +873,13 @@ const enterFullscreen = async () => {
 // =========================================================
 
 const handleStartExam = async () => {
+    // Prevent double-click / repeated start requests
+    if (startExamInProgressRef.current) {
+        return;
+    }
+
+    startExamInProgressRef.current = true;
+
     try {
         // -----------------------------------------------------
         // GET ASSIGNMENT ID
@@ -770,132 +896,154 @@ const handleStartExam = async () => {
         }
 
         // -----------------------------------------------------
-        // ENTER FULLSCREEN FIRST
-        //
-        // This must happen directly from the Start Test click.
-        // Do not wait for the backend before showing the exam.
+        // VALIDATE FIXED EXAM WINDOW
         // -----------------------------------------------------
 
-        await document.documentElement.requestFullscreen();
-
-        setIsFullscreen(true);
-        setShowFullscreenWarning(false);
-
-        // -----------------------------------------------------
-        // SHOW EXAM IMMEDIATELY
-        //
-        // Use a local start time so the UI does not wait for
-        // the backend request before rendering the questions.
-        // The server response below will synchronize the timer.
-        // -----------------------------------------------------
-
-        const localStartedAt = new Date();
-        let localExpiresAt = null;
-
-        if (assignment?.duration_minutes) {
-            localExpiresAt = new Date(
-                localStartedAt.getTime() +
-                    Number(assignment.duration_minutes) * 60 * 1000
-            ).toISOString();
+        if (
+            !assignment?.start_date_time ||
+            !assignment?.expires_at
+        ) {
+            toast.error(
+                "Exam timing information is unavailable."
+            );
+            return;
         }
 
-        setAssignment((previous) => ({
-            ...previous,
-            started_at: localStartedAt.toISOString(),
-            expires_at: localExpiresAt,
-        }));
+        const startTime = new Date(
+            assignment.start_date_time
+        ).getTime();
 
-        setExamStarted(true);
+        const expiryTime = new Date(
+            assignment.expires_at
+        ).getTime();
+
+        const currentTime = Date.now();
+
+        if (
+            Number.isNaN(startTime) ||
+            Number.isNaN(expiryTime)
+        ) {
+            toast.error(
+                "Exam timing information is invalid."
+            );
+            return;
+        }
+
+        if (currentTime < startTime) {
+            const remaining = Math.max(
+                0,
+                Math.floor((startTime - currentTime) / 1000)
+            );
+
+            setTimeUntilStart(remaining);
+
+            toast.info(
+                `The examination starts in ${formatTimeLeft(remaining)}.`
+            );
+
+            return;
+        }
+
+        if (currentTime >= expiryTime) {
+            toast.error(
+                "The time limit for this assignment has expired."
+            );
+            return;
+        }
+
+        // -----------------------------------------------------
+// ENTER FULLSCREEN FIRST
+// -----------------------------------------------------
+
+try {
+    await document.documentElement.requestFullscreen();
+
+    setIsFullscreen(true);
+    setShowFullscreenWarning(false);
+
+    setSecurityViolationCount(0);
+    securityViolationCountRef.current = 0;
+    setShowSecurityWarning(false);
+
+} catch (fullscreenError) {
+    console.error(
+        "Fullscreen failed:",
+        fullscreenError
+    );
+
+    toast.error(
+        "Please allow fullscreen mode to continue."
+    );
+
+    setExamStarted(false);
+    return;
+}
+
+// -----------------------------------------------------
+// START BACKEND AFTER FULLSCREEN
+// -----------------------------------------------------
+
+const startResponse =
+    await startStudentDescriptiveAssignment(
+        Number(finalAssignmentId)
+    );
+
+console.log(
+    "DESCRIPTIVE EXAM START RESPONSE:",
+    startResponse
+);
+
+// -----------------------------------------------------
+// SERVER CONFIRMED START
+// -----------------------------------------------------
+
+setExamStarted(true);
+setTimeUntilStart(0);
+setTimeExpired(false);
+
+const fixedRemainingSeconds = Math.max(
+    0,
+    Math.floor(
+        (expiryTime - Date.now()) / 1000
+    )
+);
+
+setTimeLeft(fixedRemainingSeconds);
+
+setAssignment((previous) => ({
+    ...previous,
+    started_at:
+        startResponse?.started_at ||
+        new Date().toISOString(),
+    expires_at:
+        previous?.expires_at ||
+        assignment.expires_at,
+}));
 
         toast.success(
             "Examination started. Please remain in fullscreen mode."
         );
 
-        // -----------------------------------------------------
-        // START EXAM ON BACKEND IN THE BACKGROUND
-        //
-        // The exam UI is already visible. We now synchronize
-        // the timer with the authoritative server start time.
-        // -----------------------------------------------------
-
-        try {
-            const startResponse =
-                await startStudentDescriptiveAssignment(
-                    Number(finalAssignmentId)
-                );
-
-            console.log(
-                "DESCRIPTIVE EXAM START RESPONSE:",
-                startResponse
-            );
-
-            // -------------------------------------------------
-            // SYNCHRONIZE WITH SERVER START TIME
-            // -------------------------------------------------
-
-            if (
-                startResponse?.started_at &&
-                assignment?.duration_minutes
-            ) {
-                const serverStartedTime = new Date(
-                    startResponse.started_at
-                ).getTime();
-
-                const serverExpiresAt = new Date(
-                    serverStartedTime +
-                        Number(assignment.duration_minutes) * 60 * 1000
-                ).toISOString();
-
-                setAssignment((previous) => ({
-                    ...previous,
-                    started_at: startResponse.started_at,
-                    expires_at: serverExpiresAt,
-                }));
-            }
-        } catch (backendError) {
-            // The UI was already opened, but the server could not
-            // start the attempt. Stop the exam so the student cannot
-            // continue without a valid backend submission.
-            console.error(
-                "Failed to start examination on backend:",
-                backendError
-            );
-
-            setExamStarted(false);
-            setTimeLeft(null);
-            setTimeExpired(false);
-
-            if (document.fullscreenElement) {
-                try {
-                    await document.exitFullscreen();
-                } catch (fullscreenError) {
-                    console.error(
-                        "Failed to exit fullscreen after start error:",
-                        fullscreenError
-                    );
-                }
-            }
-
-            setIsFullscreen(false);
-
-            const message =
-                backendError?.response?.data?.detail ||
-                "Failed to start the examination. Please try again.";
-
-            toast.error(message);
-        }
-
     } catch (error) {
         console.error(
-            "Failed to enter fullscreen/start examination:",
+            "Failed to start examination:",
             error
         );
 
+        setExamStarted(false);
+        setTimeLeft(null);
+        setTimeExpired(false);
+        setIsFullscreen(false);
+
         const message =
             error?.response?.data?.detail ||
-            "Please allow fullscreen mode to start the examination.";
+            "Failed to start the examination. Please try again.";
 
         toast.error(message);
+
+    } finally {
+        // Allow another click only after the current operation finishes
+        startExamInProgressRef.current = false;
     }
 };
  useEffect(() => {
@@ -948,6 +1096,194 @@ const handleStartExam = async () => {
     submitted,
     timeExpired,
 ]);
+    // =========================================================
+    // COPY / PASTE / RIGHT-CLICK / KEYBOARD SECURITY
+    // =========================================================
+
+    useEffect(() => {
+        if (!examStarted || submitted || timeExpired) {
+            return;
+        }
+
+        const handleContextMenu = (event) => {
+            event.preventDefault();
+            recordSecurityViolation(
+                "Right-click is disabled during the examination"
+            );
+        };
+
+        const handleCopy = (event) => {
+            event.preventDefault();
+            recordSecurityViolation(
+                "Copy is disabled during the examination"
+            );
+        };
+
+        const handleCut = (event) => {
+            event.preventDefault();
+            recordSecurityViolation(
+                "Cut is disabled during the examination"
+            );
+        };
+
+        const handlePaste = (event) => {
+            event.preventDefault();
+            recordSecurityViolation(
+                "Paste is disabled during the examination"
+            );
+        };
+
+        const handleKeyDown = (event) => {
+            const key = event.key.toLowerCase();
+            const ctrlOrMeta = event.ctrlKey || event.metaKey;
+
+            const blockedShortcut =
+                key === "f12" ||
+                key === "f5" ||
+                (ctrlOrMeta && ["r", "s", "p", "u"].includes(key)) ||
+                (ctrlOrMeta &&
+                    event.shiftKey &&
+                    ["i", "j", "c"].includes(key)) ||
+                (event.altKey &&
+                    ["arrowleft", "arrowright"].includes(key));
+
+            if (blockedShortcut) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                recordSecurityViolation(
+                    `Blocked keyboard shortcut: ${event.key}`
+                );
+            }
+        };
+
+        document.addEventListener(
+            "contextmenu",
+            handleContextMenu
+        );
+
+        document.addEventListener("copy", handleCopy);
+        document.addEventListener("cut", handleCut);
+        document.addEventListener("paste", handlePaste);
+
+        document.addEventListener(
+            "keydown",
+            handleKeyDown,
+            true
+        );
+
+        return () => {
+            document.removeEventListener(
+                "contextmenu",
+                handleContextMenu
+            );
+
+            document.removeEventListener(
+                "copy",
+                handleCopy
+            );
+
+            document.removeEventListener(
+                "cut",
+                handleCut
+            );
+
+            document.removeEventListener(
+                "paste",
+                handlePaste
+            );
+
+            document.removeEventListener(
+                "keydown",
+                handleKeyDown,
+                true
+            );
+        };
+    }, [
+        examStarted,
+        submitted,
+        timeExpired,
+        securityViolationCount,
+    ]);
+
+    // =========================================================
+    // REFRESH / PAGE-LEAVE PROTECTION
+    // =========================================================
+
+    useEffect(() => {
+        if (!examStarted || submitted || timeExpired) {
+            return;
+        }
+
+        const handleBeforeUnload = (event) => {
+            event.preventDefault();
+
+            event.returnValue =
+                "Your examination is still in progress. Leaving this page may interrupt your submission.";
+        };
+
+        window.addEventListener(
+            "beforeunload",
+            handleBeforeUnload
+        );
+
+        return () => {
+            window.removeEventListener(
+                "beforeunload",
+                handleBeforeUnload
+            );
+        };
+    }, [
+        examStarted,
+        submitted,
+        timeExpired,
+    ]);
+
+    // =========================================================
+    // BROWSER BACK-BUTTON PROTECTION
+    // =========================================================
+
+    useEffect(() => {
+        if (!examStarted || submitted || timeExpired) {
+            return;
+        }
+
+        window.history.pushState(
+            { descriptiveExam: true },
+            "",
+            window.location.href
+        );
+
+        const handlePopState = () => {
+            window.history.pushState(
+                { descriptiveExam: true },
+                "",
+                window.location.href
+            );
+
+            recordSecurityViolation(
+                "Browser back navigation is disabled during the examination"
+            );
+        };
+
+        window.addEventListener(
+            "popstate",
+            handlePopState
+        );
+
+        return () => {
+            window.removeEventListener(
+                "popstate",
+                handlePopState
+            );
+        };
+    }, [
+        examStarted,
+        submitted,
+        timeExpired,
+        securityViolationCount,
+    ]);
+
     // =========================================================
     // LOADING
     // =========================================================
@@ -1054,6 +1390,26 @@ const handleStartExam = async () => {
 
     // Do not show the actual questions before the student starts.
     if (!examStarted) {
+        const startTimestamp = assignment?.start_date_time
+            ? new Date(assignment.start_date_time).getTime()
+            : NaN;
+
+        const endTimestamp = assignment?.expires_at
+            ? new Date(assignment.expires_at).getTime()
+            : NaN;
+
+        const now = Date.now();
+
+        const hasValidTiming =
+            !Number.isNaN(startTimestamp) &&
+            !Number.isNaN(endTimestamp);
+
+        const examNotStarted =
+            hasValidTiming && now < startTimestamp;
+
+        const examAlreadyExpired =
+            hasValidTiming && now >= endTimestamp;
+
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
                 <div className="w-full max-w-lg rounded-2xl bg-white p-8 text-center shadow-xl border border-gray-100">
@@ -1109,13 +1465,56 @@ const handleStartExam = async () => {
                         </div>
                     )}
 
+                    {examNotStarted && (
+                        <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-5">
+                            <p className="text-sm font-semibold text-blue-800">
+                                Examination has not started yet
+                            </p>
+
+                            <p className="mt-2 text-sm text-blue-700">
+                                The test will open at the scheduled start time.
+                            </p>
+
+                            <div className="mt-4 text-4xl font-bold tracking-wider text-blue-900">
+                                {formatTimeLeft(timeUntilStart)}
+                            </div>
+
+                            <p className="mt-1 text-xs text-blue-700">
+                                Time remaining until Start Test is enabled
+                            </p>
+                        </div>
+                    )}
+
+                    {examAlreadyExpired && (
+                        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-5 text-left">
+                            <p className="text-sm font-semibold text-red-800">
+                                Examination window has expired
+                            </p>
+                            <p className="mt-2 text-sm text-red-700">
+                                This examination can no longer be started.
+                            </p>
+                        </div>
+                    )}
+
+                    {!examNotStarted && !examAlreadyExpired && (
+                        <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-left">
+                            <p className="text-sm font-semibold text-green-800">
+                                Examination is ready to start
+                            </p>
+                            <p className="mt-2 text-sm leading-relaxed text-green-700">
+                                The timer uses the fixed examination end time. Starting late means less time remaining.
+                            </p>
+                        </div>
+                    )}
+
                     <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-left">
                         <p className="text-sm font-semibold text-red-800">
                             Before you start
                         </p>
                         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-700">
                             <li>The examination will open in fullscreen mode.</li>
-                            <li>The timer will run while you are taking the examination.</li>
+                            <li>The timer runs until the fixed examination end time.</li>
+                            <li>Starting late gives you only the remaining time.</li>
                             <li>Do not switch tabs or exit fullscreen repeatedly.</li>
                             <li>Your work will be submitted automatically when the time expires.</li>
                         </ul>
@@ -1124,9 +1523,24 @@ const handleStartExam = async () => {
                     <button
                         type="button"
                         onClick={handleStartExam}
-                        className="mt-6 w-full rounded-xl bg-blue-600 px-6 py-3.5 font-semibold text-white transition hover:bg-blue-700"
+                        disabled={
+                            !hasValidTiming ||
+                            examNotStarted ||
+                            examAlreadyExpired
+                        }
+                        className={`mt-6 w-full rounded-xl px-6 py-3.5 font-semibold text-white transition ${
+                            !hasValidTiming ||
+                            examNotStarted ||
+                            examAlreadyExpired
+                                ? "cursor-not-allowed bg-gray-400"
+                                : "bg-purple-600 hover:bg-purple-700"
+                        }`}
                     >
-                        Start Test
+                        {examNotStarted
+                            ? `Start Test in ${formatTimeLeft(timeUntilStart)}`
+                            : examAlreadyExpired
+                                ? "Exam Expired"
+                                : "Start Test"}
                     </button>
 
                     <button
@@ -1246,46 +1660,51 @@ const handleStartExam = async () => {
                     Fullscreen violations:{" "}
                     {fullscreenViolationCount}
                 </p>
+
+                <button
+                    type="button"
+                    onClick={enterFullscreen}
+                    className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                    Return to Fullscreen
+                </button>
             </div>
- {showFullscreenWarning && (
+        </div>
+    </div>
+)}
+
+{showSecurityWarning && securityViolationCount > 0 && (
     <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-4 py-4 shadow-sm">
-        <div>
-            <p className="font-semibold text-red-800">
-                ⚠️ Fullscreen Mode Required
-            </p>
+        <div className="flex items-start justify-between gap-4">
+            <div>
+                <p className="font-semibold text-red-800">
+                    ⚠️ Security Warning
+                </p>
 
-            <p className="mt-1 text-sm text-red-700">
-                You exited fullscreen mode.
-                Please return to fullscreen to continue
-                the examination.
-            </p>
+                <p className="mt-1 text-sm text-red-700">
+                    Restricted browser actions are monitored during
+                    the examination.
+                </p>
 
-            <p className="mt-2 text-xs font-medium text-red-800">
-                Fullscreen violations:{" "}
-                {fullscreenViolationCount}
-            </p>
+                <p className="mt-2 text-xs font-medium text-red-800">
+                    Security violations:{" "}
+                    {securityViolationCount}
+                </p>
+            </div>
 
             <button
                 type="button"
-                onClick={enterFullscreen}
-                className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                onClick={() =>
+                    setShowSecurityWarning(false)
+                }
+                className="text-red-700 hover:text-red-900"
             >
-                Return to Fullscreen
+                ✕
             </button>
         </div>
     </div>
 )}
-        </div>
 
-        <button
-            type="button"
-            onClick={enterFullscreen}
-            className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-        >
-            Return to Fullscreen
-        </button>
-    </div>
-)}
                 {/* BACK BUTTON */}
 
                 <button
