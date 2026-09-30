@@ -35,6 +35,10 @@ const TeacherQuizzes = () => {
     const [publishQuiz, setPublishQuiz] = useState(null);
     const [draftQuiz, setDraftQuiz] = useState(null);
 
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [publishLoading, setPublishLoading] = useState(false);
+    const [draftLoading, setDraftLoading] = useState(false);
+
     useEffect(() => {
         fetchQuizzes();
     }, []);
@@ -63,9 +67,11 @@ const openDraftModal = (quiz) => {
 };
 
 const handleDelete = async () => {
-    if (!deleteQuiz) return;
+    if (!deleteQuiz || deleteLoading) return;
 
     try {
+        setDeleteLoading(true);
+
         await deleteTeacherQuiz(deleteQuiz.id);
 
         setQuizzes((prev) =>
@@ -73,55 +79,60 @@ const handleDelete = async () => {
         );
 
         toast.success("Quiz deleted successfully");
-
         setDeleteQuiz(null);
 
     } catch (error) {
         toast.error("Failed to delete quiz.");
+    } finally {
+        setDeleteLoading(false);
     }
 };
 const handlePublish = async (quizId) => {
+    if (publishLoading) return;
+
     try {
+        setPublishLoading(true);
+
         await publishTeacherQuiz(quizId);
 
         toast.success("Quiz published successfully");
-
-        fetchQuizzes();
+        await fetchQuizzes();
 
     } catch (error) {
         console.error(error);
         toast.error("Failed to publish quiz.");
+    } finally {
+        setPublishLoading(false);
     }
 };
 const confirmPublish = async () => {
-
-    if (!publishQuiz) return;
+    if (!publishQuiz || publishLoading) return;
 
     await handlePublish(publishQuiz.id);
-
     setPublishQuiz(null);
-
 };
 const confirmMoveToDraft = async () => {
-
-    if (!draftQuiz) return;
+    if (!draftQuiz || draftLoading) return;
 
     await handleMoveToDraft(draftQuiz.id);
-
     setDraftQuiz(null);
-
 };
 const handleMoveToDraft = async (quizId) => {
+    if (draftLoading) return;
+
     try {
+        setDraftLoading(true);
+
         await moveQuizToDraft(quizId);
 
         toast.success("Quiz moved to Draft");
-
-        fetchQuizzes();
+        await fetchQuizzes();
 
     } catch (error) {
         console.error(error);
         toast.error("Failed to update quiz.");
+    } finally {
+        setDraftLoading(false);
     }
 };
 const handleDuplicate = async (quizId) => {
@@ -428,34 +439,40 @@ const handleDuplicate = async (quizId) => {
             )}
             <ConfirmModal
     isOpen={deleteQuiz !== null}
-    title="Delete Quiz"
+    title="Delete Quiz?"
     message={
         deleteQuiz
-            ? `Are you sure you want to delete "${deleteQuiz.title}"? This action cannot be undone.`
+            ? `You are about to permanently delete "${deleteQuiz.title}". This action cannot be undone. Are you sure you want to delete this quiz?`
             : ""
     }
-    confirmText="Delete"
-    cancelText="Cancel"
+    confirmText={deleteLoading ? "Deleting..." : "Yes, Delete Quiz"}
+    cancelText={deleteLoading ? "Please wait..." : "Cancel"}
     onConfirm={handleDelete}
-    onCancel={() => setDeleteQuiz(null)}
+    onCancel={() => {
+        if (!deleteLoading) setDeleteQuiz(null);
+    }}
 />
 <ConfirmModal
     isOpen={publishQuiz !== null}
-    title="Publish Quiz"
-    message="This quiz will become available for assignment to students."
-    confirmText="Publish"
-    cancelText="Cancel"
+    title="Publish Quiz?"
+    message="This quiz will become available for assignment to students. Are you sure you want to publish this quiz?"
+    confirmText={publishLoading ? "Publishing..." : "Yes, Publish Quiz"}
+    cancelText={publishLoading ? "Please wait..." : "Cancel"}
     onConfirm={confirmPublish}
-    onCancel={() => setPublishQuiz(null)}
+    onCancel={() => {
+        if (!publishLoading) setPublishQuiz(null);
+    }}
 />
 <ConfirmModal
     isOpen={draftQuiz !== null}
-    title="Move to Draft"
-    message="Students cannot receive new assignments until this quiz is published again."
-    confirmText="Move to Draft"
-    cancelText="Cancel"
+    title="Move Quiz to Draft?"
+    message="Students cannot receive new assignments until this quiz is published again. Are you sure you want to move this quiz to draft?"
+    confirmText={draftLoading ? "Moving to Draft..." : "Yes, Move to Draft"}
+    cancelText={draftLoading ? "Please wait..." : "Cancel"}
     onConfirm={confirmMoveToDraft}
-    onCancel={() => setDraftQuiz(null)}
+    onCancel={() => {
+        if (!draftLoading) setDraftQuiz(null);
+    }}
 />
 
         </div>

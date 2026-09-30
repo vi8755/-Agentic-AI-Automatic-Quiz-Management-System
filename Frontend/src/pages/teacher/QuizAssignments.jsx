@@ -17,6 +17,7 @@ const QuizAssignments = () => {
 
     const [loading, setLoading] = useState(true);
     const [showAssignModal, setShowAssignModal] = useState(false);
+    const [openingAssignModal, setOpeningAssignModal] = useState(false);
 
     const [sections, setSections] = useState([]);
 
@@ -141,9 +142,15 @@ const QuizAssignments = () => {
     // ========================================================
 
     const openAssignModal = async () => {
-        await fetchSections();
+        if (openingAssignModal) return;
 
-        setShowAssignModal(true);
+        try {
+            setOpeningAssignModal(true);
+            await fetchSections();
+            setShowAssignModal(true);
+        } finally {
+            setOpeningAssignModal(false);
+        }
     };
 
     // ========================================================
@@ -292,9 +299,10 @@ const QuizAssignments = () => {
 
                     <button
                         onClick={openAssignModal}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg"
+                        disabled={openingAssignModal}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                        + Assign Quiz
+                        {openingAssignModal ? "Opening..." : "+ Assign Quiz"}
                     </button>
 
                 </div>
@@ -646,8 +654,8 @@ const QuizAssignments = () => {
                             >
 
                                 {assignLoading
-                                    ? "Assigning..."
-                                    : "Assign Quiz"}
+                                    ? "Assigning Quiz..."
+                                    : "Assign Quiz to Section"}
 
                             </button>
 

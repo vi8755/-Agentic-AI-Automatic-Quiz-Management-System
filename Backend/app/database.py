@@ -14,8 +14,9 @@ else:
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,
+        pool_recycle=1800,
     )
-    print("DATABASE_URL =", DATABASE_URL)
+     
 
 SessionLocal = sessionmaker(
     autocommit=False,

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     FRONTEND_PREVIEW_URL: str = "http://localhost:4173"
 
     GROQ_MODEL:str
+    GROQ_VISION_MODEL: str = "qwen/qwen3.8-27b"
 
     CHROMA_DB: str = str(BACKEND_DIR / "chroma_db")
 

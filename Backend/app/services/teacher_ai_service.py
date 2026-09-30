@@ -4,10 +4,88 @@ import re
 from ..agents.teacher_ai.graph import (
     teacher_ai_graph,
 )
+import base64
+from groq import Groq
+from ..config import settings
 import json
 from ..ai.llm import llm
 from ..utils.topic_extractor import extract_topics
 from ..ai.topic_cleaner import clean_topics
+def extract_pdf_text_with_vision(pdf):
+    """
+    Extract text from scanned/handwritten PDF pages using Groq Vision.
+    """
+
+    client = Groq(api_key=settings.GROQ_API_KEY)
+
+    vision_model = settings.GROQ_VISION_MODEL
+
+    page_texts = []
+
+    for page_number, page in enumerate(pdf, start=1):
+
+        # Render PDF page as image
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(2, 2),
+            alpha=False
+        )
+
+        image_bytes = pix.tobytes("png")
+
+        # Convert image to base64
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        prompt = """
+You are extracting content from an educational question paper.
+
+Read this document image carefully.
+
+Your task:
+1. Transcribe all readable text.
+2. Preserve question numbers such as Q1, Q2, Q3.
+3. Preserve mathematical expressions, symbols, equations and technical terms.
+4. Preserve the original order of the questions.
+5. If a question contains a diagram, figure, chart, ladder, architecture,
+   or other visual element that is important to understanding the question,
+   describe that visual element briefly.
+6. Do NOT invent missing or unreadable content.
+7. Return ONLY the extracted/transcribed content.
+"""
+
+        response = client.chat.completions.create(
+            model=vision_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": (
+                                    f"data:image/png;base64,"
+                                    f"{image_base64}"
+                                )
+                            },
+                        },
+                    ],
+                }
+            ],
+            temperature=0.1,
+            max_completion_tokens=4096,
+        )
+
+        text = response.choices[0].message.content or ""
+
+        if text.strip():
+            page_texts.append(
+                f"\n--- Page {page_number} ---\n{text.strip()}"
+            )
+
+    return "\n".join(page_texts).strip()
 def extract_pdf_text(
     file: UploadFile,
     selected_topics: list[str],
@@ -24,63 +102,116 @@ def extract_pdf_text(
         filetype="pdf",
     )
 
-    extracted_text = ""
+    try:
 
-    for page in pdf:
-        extracted_text += page.get_text()
+        # -----------------------------------
+        # STEP 1: Normal PDF text extraction
+        # -----------------------------------
 
-    page_count = len(pdf)
+        extracted_text = ""
 
-    pdf.close()
+        for page in pdf:
+            extracted_text += page.get_text()
 
-    result = teacher_ai_graph.invoke(
-        { 
-            "pdf_text": extracted_text,
-        "cleaned_text": "",
-        "chunks": [],
+        extracted_text = extracted_text.strip()
 
-        "title": "",
-        "question_count": question_count,
-        "difficulty": difficulty,
-        "bloom_level": bloom_level,
-        "time_limit": time_limit,
+        # -----------------------------------
+        # STEP 2: OCR fallback
+        # -----------------------------------
 
-        "status": "Draft",
+        if not extracted_text:
 
-        "topics": [],
-        "clean_topics": [],
-        "selected_topics": selected_topics,
+            print(
+                "No text layer found. "
+                "Starting Groq Vision OCR..."
+            )
 
-        "quiz_plan": {},
+            extracted_text = extract_pdf_text_with_vision(pdf)
 
-        "questions": [],
-        "validated_questions": [],
-        "quiz": {},
+        # -----------------------------------
+        # STEP 3: Final validation
+        # -----------------------------------
+
+        if not extracted_text:
+
+            raise ValueError(
+                "No readable text could be extracted "
+                "from the question PDF."
+            )
+
+        print(
+            f"Extracted PDF text length: "
+            f"{len(extracted_text)} characters"
+        )
+
+        # -----------------------------------
+        # STEP 4: Existing AI pipeline
+        # -----------------------------------
+
+        result = teacher_ai_graph.invoke(
+            {
+                "pdf_text": extracted_text,
+                "cleaned_text": "",
+                "chunks": [],
+
+                "title": "",
+                "question_count": question_count,
+                "difficulty": difficulty,
+                "bloom_level": bloom_level,
+                "time_limit": time_limit,
+
+                "status": "Draft",
+
+                "topics": [],
+                "clean_topics": [],
+                "selected_topics": selected_topics,
+
+                "quiz_plan": {},
+
+                "questions": [],
+                "validated_questions": [],
+                "quiz": {},
+            }
+        )
+
+        # -----------------------------------
+        # DEBUG
+        # -----------------------------------
+
+        print("\n========== RETURN TYPES ==========")
+
+        print("result:", type(result))
+        print("quiz:", type(result["quiz"]))
+        print("questions:", type(result["questions"]))
+        print(
+            "validated_questions:",
+            type(result["validated_questions"])
+        )
+
+        print("\n========== FINAL QUIZ ==========")
+        print(result["quiz"])
+        print("================================\n")
+
+        # -----------------------------------
+        # STEP 5: Return existing response
+        # -----------------------------------
+
+        return {
+            "message": "PDF processed successfully",
+            "pages": len(pdf),
+            "characters": len(result["cleaned_text"]),
+            "chunks": len(result["chunks"]),
+            "topics": result["topics"],
+            "clean_topics": result["clean_topics"],
+            "quiz_plan": result["quiz_plan"],
+            "questions": result["questions"],
+            "validated_questions": result["validated_questions"],
+            "quiz": result["quiz"],
         }
-    )
-    print("\n========== RETURN TYPES ==========")
 
-    print("result:", type(result))
-    print("quiz:", type(result["quiz"]))
-    print("questions:", type(result["questions"]))
-    print("validated_questions:", type(result["validated_questions"]))
+    finally:
 
-    print("\n========== FINAL QUIZ ==========")
-    print(result["quiz"])
-    print("================================\n")
-
-    return {
-    "message": "PDF processed successfully",
-    "pages": page_count,
-    "characters": len(result["cleaned_text"]),
-    "chunks": len(result["chunks"]),
-    "topics": result["topics"],
-    "clean_topics": result["clean_topics"],
-    "quiz_plan": result["quiz_plan"],
-    "questions": result["questions"],
-    "validated_questions": result["validated_questions"],
-    "quiz": result["quiz"],
-    }
+        pdf.close()
 def clean_text(text: str):
 
     text = re.sub(r"\n+", "\n", text)
