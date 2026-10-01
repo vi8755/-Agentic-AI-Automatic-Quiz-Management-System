@@ -5,6 +5,7 @@ from fastapi import (
     File,
     UploadFile,
 )
+from ..services.supabase_storage_service import upload_pdf
 from sqlalchemy import text
 import os
 import uuid
@@ -800,7 +801,6 @@ def start_student_descriptive_assignment(
 )
 async def submit_student_descriptive_assignment_pdf(
     assignment_id: int,
-
     file: UploadFile = File(...),
     current_user: User = Depends(
         require_role(UserRole.STUDENT)
@@ -822,7 +822,6 @@ async def submit_student_descriptive_assignment_pdf(
     )
 
     if not student:
-
         raise HTTPException(
             status_code=404,
             detail="Student not found.",
@@ -833,18 +832,17 @@ async def submit_student_descriptive_assignment_pdf(
     # =====================================================
 
     if not file.filename:
-
         raise HTTPException(
             status_code=400,
             detail="No file selected.",
         )
 
     if not file.filename.lower().endswith(".pdf"):
-
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are allowed.",
         )
+
     # =====================================================
     # READ + VALIDATE ANSWER PDF
     # =====================================================
@@ -888,6 +886,7 @@ async def submit_student_descriptive_assignment_pdf(
 
         if pdf_document.page_count == 0:
             pdf_document.close()
+
             raise HTTPException(
                 status_code=400,
                 detail="The uploaded PDF contains no pages.",
@@ -918,7 +917,6 @@ async def submit_student_descriptive_assignment_pdf(
     )
 
     if not assignment:
-
         raise HTTPException(
             status_code=404,
             detail="Assignment not found.",
@@ -929,7 +927,6 @@ async def submit_student_descriptive_assignment_pdf(
     # =====================================================
 
     if assignment.status != "Published":
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -948,7 +945,6 @@ async def submit_student_descriptive_assignment_pdf(
             tzinfo=None
         )
     ):
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -974,7 +970,6 @@ async def submit_student_descriptive_assignment_pdf(
     )
 
     if not submission:
-
         raise HTTPException(
             status_code=403,
             detail=(
@@ -995,64 +990,27 @@ async def submit_student_descriptive_assignment_pdf(
         )
 
     # =====================================================
-    # CREATE UPLOAD DIRECTORY
-    # =====================================================
-
-    upload_dir = (
-        "uploads/descriptive_answers"
-    )
-
-    os.makedirs(
-        upload_dir,
-        exist_ok=True,
-    )
-
-    # =====================================================
-    # UNIQUE FILE NAME
-    # =====================================================
-
-    unique_file_name = (
-        f"{uuid.uuid4().hex}.pdf"
-    )
-
-    file_path = os.path.join(
-        upload_dir,
-        unique_file_name,
-    )
-
-    # =====================================================
-    # SAVE PDF
+    # UPLOAD ANSWER PDF TO SUPABASE STORAGE
     # =====================================================
 
     try:
 
-        with open(
-            file_path,
-            "wb",
-        ) as buffer:
-
-            buffer.write(
-                file_content
-            )
+        answer_pdf_url = upload_pdf(
+            file_content=file_content,
+            original_filename=file.filename,
+            folder="descriptive_answers",
+        )
 
     except Exception as e:
 
         raise HTTPException(
             status_code=500,
             detail=(
-                "Failed to save answer PDF: "
+                "Failed to upload answer PDF "
+                "to storage: "
                 f"{str(e)}"
             ),
         )
-
-    # =====================================================
-    # CREATE URL
-    # =====================================================
-
-    answer_pdf_url = (
-        f"/uploads/descriptive_answers/"
-        f"{unique_file_name}"
-    )
 
     # =====================================================
     # UPDATE SUBMISSION
@@ -1085,14 +1043,17 @@ async def submit_student_descriptive_assignment_pdf(
     db.commit()
 
     db.refresh(submission)
+
+    # =====================================================
+    # CREATE EVALUATION JOB
+    # =====================================================
+
     create_evaluation_job(
-    db=db,
-    submission_id=submission.id,
-    job_type="PDF",
+        db=db,
+        submission_id=submission.id,
+        job_type="PDF",
     )
 
-     
- 
     # =====================================================
     # RETURN
     # =====================================================
@@ -1139,8 +1100,8 @@ async def submit_student_descriptive_assignment_pdf(
         ),
 
         "message": (
-              "Answer PDF submitted successfully. "
-             "Evaluation is being processed in the background."
+            "Answer PDF submitted successfully. "
+            "Evaluation is being processed in the background."
         ),
     }
 

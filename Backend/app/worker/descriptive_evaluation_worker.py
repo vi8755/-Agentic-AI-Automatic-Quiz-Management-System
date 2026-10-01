@@ -8,21 +8,23 @@ from ..models import (
     DescriptiveEvaluationJob,
     DescriptiveEvaluationLog,
 )
-from ..services.descriptive_evaluation_queue import (
-    claim_next_job,
-    mark_job_completed,
-    mark_job_failed,
-)
-from ..services.descriptive_evaluation_service import (
-    evaluate_descriptive_submission,
-    evaluate_descriptive_pdf_submission,
-)
+
 from ..services.descriptive_evaluation_queue import (
     claim_next_job,
     mark_job_completed,
     mark_job_failed,
     refresh_job_lock,
 )
+
+from ..services.descriptive_evaluation_service import (
+    evaluate_descriptive_submission,
+    evaluate_descriptive_pdf_submission,
+)
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 MAX_WORKERS = min(
     int(
@@ -34,10 +36,22 @@ MAX_WORKERS = min(
     5,
 )
 
-# Global shutdown signal
+
+# ============================================================
+# GLOBAL SHUTDOWN SIGNAL
+# ============================================================
+
 STOP_EVENT = threading.Event()
 
-def heartbeat_job(job_id: int, stop_event: threading.Event):
+
+# ============================================================
+# HEARTBEAT
+# ============================================================
+
+def heartbeat_job(
+    job_id: int,
+    stop_event: threading.Event,
+):
     """
     Keep the evaluation job lock alive while the AI evaluation
     is running.
@@ -47,20 +61,25 @@ def heartbeat_job(job_id: int, stop_event: threading.Event):
     """
 
     while not stop_event.wait(300):
+
         db = SessionLocal()
 
         try:
+
             refreshed = refresh_job_lock(
                 db=db,
                 job_id=job_id,
             )
 
             if refreshed:
+
                 print(
                     f"[EVAL-HEARTBEAT] "
                     f"job={job_id} lock refreshed"
                 )
+
             else:
+
                 print(
                     f"[EVAL-HEARTBEAT] "
                     f"job={job_id} no longer processing"
@@ -69,6 +88,7 @@ def heartbeat_job(job_id: int, stop_event: threading.Event):
                 break
 
         except Exception as e:
+
             print(
                 f"[EVAL-HEARTBEAT] "
                 f"job={job_id} ERROR | "
@@ -76,23 +96,51 @@ def heartbeat_job(job_id: int, stop_event: threading.Event):
             )
 
         finally:
+
             db.close()
+
+
+# ============================================================
+# WORKER
+# ============================================================
+
 def process_jobs(worker_id: int):
+
     print(
         f"[EVAL-WORKER-{worker_id}] started"
     )
 
     while not STOP_EVENT.is_set():
 
+        # ----------------------------------------------------
+        # Reset state for this iteration
+        # ----------------------------------------------------
+
         db = SessionLocal()
+
         job = None
         execution_log = None
+        execution_log_id = None
         started_at = None
 
+        submission_id = None
+        job_type = None
+        job_id = None
+        attempt = None
+
+        heartbeat_stop_event = None
+        heartbeat_thread = None
+
         try:
+
+            # =================================================
+            # CLAIM NEXT JOB
+            # =================================================
+
             job = claim_next_job(db)
 
             if not job:
+
                 db.close()
 
                 # Wait up to 2 seconds, but wake immediately
@@ -100,6 +148,10 @@ def process_jobs(worker_id: int):
                 STOP_EVENT.wait(2)
 
                 continue
+
+            # ------------------------------------------------
+            # Capture primitive values BEFORE closing session
+            # ------------------------------------------------
 
             submission_id = job.submission_id
             job_type = job.job_type
@@ -116,9 +168,9 @@ def process_jobs(worker_id: int):
                 f"attempt={attempt}"
             )
 
-            # --------------------------------------------------
+            # =================================================
             # CREATE EXECUTION LOG
-            # --------------------------------------------------
+            # =================================================
 
             execution_log = DescriptiveEvaluationLog(
                 job_id=job_id,
@@ -143,48 +195,77 @@ def process_jobs(worker_id: int):
                 f"job={job_id}"
             )
 
+            # =================================================
+            # CLOSE CLAIM SESSION
+            # =================================================
+
             db.close()
+
+            # =================================================
+            # START HEARTBEAT
+            # =================================================
+
             heartbeat_stop_event = threading.Event()
 
             heartbeat_thread = threading.Thread(
-             target=heartbeat_job,
-             args=(
-               job_id,
-               heartbeat_stop_event,
-            ),
-            daemon=True,
-)
+                target=heartbeat_job,
+                args=(
+                    job_id,
+                    heartbeat_stop_event,
+                ),
+                daemon=True,
+            )
 
             heartbeat_thread.start()
 
-            # --------------------------------------------------
+            # =================================================
             # RUN AI EVALUATION
-            # --------------------------------------------------
+            # =================================================
 
             evaluation_db = SessionLocal()
 
             try:
+
                 if job_type == "PDF":
+
                     evaluate_descriptive_pdf_submission(
                         submission_id=submission_id,
                         db=evaluation_db,
                     )
+
                 else:
+
                     evaluate_descriptive_submission(
                         submission_id=submission_id,
                         db=evaluation_db,
                     )
 
             finally:
+
                 evaluation_db.close()
 
-            # --------------------------------------------------
+            # =================================================
+            # STOP HEARTBEAT
+            # =================================================
+
+            if heartbeat_stop_event is not None:
+
+                heartbeat_stop_event.set()
+
+            if heartbeat_thread is not None:
+
+                heartbeat_thread.join(
+                    timeout=2
+                )
+
+            # =================================================
             # MARK JOB COMPLETED
-            # --------------------------------------------------
+            # =================================================
 
             db = SessionLocal()
 
             try:
+
                 fresh_job = (
                     db.query(
                         DescriptiveEvaluationJob
@@ -197,17 +278,19 @@ def process_jobs(worker_id: int):
                 )
 
                 if fresh_job:
+
                     mark_job_completed(
                         db,
                         fresh_job,
                     )
 
             finally:
+
                 db.close()
 
-            # --------------------------------------------------
+            # =================================================
             # UPDATE EXECUTION LOG -> COMPLETED
-            # --------------------------------------------------
+            # =================================================
 
             completed_at = datetime.now(
                 timezone.utc
@@ -220,6 +303,7 @@ def process_jobs(worker_id: int):
             db = SessionLocal()
 
             try:
+
                 fresh_log = (
                     db.query(
                         DescriptiveEvaluationLog
@@ -232,11 +316,17 @@ def process_jobs(worker_id: int):
                 )
 
                 if fresh_log:
+
                     fresh_log.status = "COMPLETED"
-                    fresh_log.completed_at = completed_at
+
+                    fresh_log.completed_at = (
+                        completed_at
+                    )
+
                     fresh_log.duration_seconds = (
                         duration_seconds
                     )
+
                     fresh_log.error = None
 
                     db.commit()
@@ -250,43 +340,78 @@ def process_jobs(worker_id: int):
                     )
 
             finally:
+
                 db.close()
+
+        # =====================================================
+        # ERROR HANDLING
+        # =====================================================
 
         except Exception as e:
 
             print(
                 f"[EVAL-WORKER-{worker_id}] "
                 f"ERROR | "
-                f"job={job.id if job else 'UNKNOWN'} | "
+                f"job="
+                f"{job_id if job_id else 'UNKNOWN'} | "
                 f"submission="
-                f"{job.submission_id if job else 'UNKNOWN'} | "
+                f"{submission_id if submission_id else 'UNKNOWN'} | "
                 f"job_type="
-                f"{job.job_type if job else 'UNKNOWN'} | "
+                f"{job_type if job_type else 'UNKNOWN'} | "
                 f"error={e}"
             )
 
-            # --------------------------------------------------
-            # UPDATE JOB -> FAILED / RETRY
-            # --------------------------------------------------
+            # =================================================
+            # STOP HEARTBEAT AFTER FAILURE
+            # =================================================
 
             try:
-                db.rollback()
 
-                if job:
+                if heartbeat_stop_event is not None:
+
+                    heartbeat_stop_event.set()
+
+                if heartbeat_thread is not None:
+
+                    heartbeat_thread.join(
+                        timeout=2
+                    )
+
+            except Exception as heartbeat_error:
+
+                print(
+                    "[EVAL-WORKER] "
+                    "Failed to stop heartbeat: "
+                    f"{heartbeat_error}"
+                )
+
+            # =================================================
+            # UPDATE JOB -> FAILED / RETRY
+            # =================================================
+
+            failure_db = None
+
+            try:
+
+                if job_id is not None:
+
+                    failure_db = SessionLocal()
+
                     fresh_job = (
-                        db.query(
+                        failure_db.query(
                             DescriptiveEvaluationJob
                         )
                         .filter(
                             DescriptiveEvaluationJob.id
-                            == job.id
+                            == job_id
                         )
                         .first()
                     )
 
                     if fresh_job:
+
                         mark_job_failed(
-                            db,
+                            failure_db,
                             fresh_job,
                             str(e),
                         )
@@ -311,28 +436,39 @@ def process_jobs(worker_id: int):
                 )
 
             finally:
-                db.close()
 
-            # --------------------------------------------------
+                if failure_db is not None:
+
+                    failure_db.close()
+
+            # =================================================
             # UPDATE EXECUTION LOG -> FAILED
-            # --------------------------------------------------
+            # =================================================
 
-            if execution_log is not None:
+            if execution_log_id is not None:
 
                 try:
+
                     completed_at = datetime.now(
                         timezone.utc
                     )
 
-                    duration_seconds = (
-                        completed_at - started_at
-                    ).total_seconds()
+                    if started_at is not None:
 
-                    db = SessionLocal()
+                        duration_seconds = (
+                            completed_at - started_at
+                        ).total_seconds()
+
+                    else:
+
+                        duration_seconds = None
+
+                    log_db = SessionLocal()
 
                     try:
+
                         fresh_log = (
-                            db.query(
+                            log_db.query(
                                 DescriptiveEvaluationLog
                             )
                             .filter(
@@ -343,16 +479,20 @@ def process_jobs(worker_id: int):
                         )
 
                         if fresh_log:
+
                             fresh_log.status = "FAILED"
+
                             fresh_log.completed_at = (
                                 completed_at
                             )
+
                             fresh_log.duration_seconds = (
                                 duration_seconds
                             )
+
                             fresh_log.error = str(e)
 
-                            db.commit()
+                            log_db.commit()
 
                             print(
                                 f"[EVAL-WORKER-{worker_id}] "
@@ -363,7 +503,8 @@ def process_jobs(worker_id: int):
                             )
 
                     finally:
-                        db.close()
+
+                        log_db.close()
 
                 except Exception as log_error:
 
@@ -373,14 +514,27 @@ def process_jobs(worker_id: int):
                         f"{log_error}"
                     )
 
+            # =================================================
+            # WAIT BEFORE NEXT JOB
+            # =================================================
+
             STOP_EVENT.wait(2)
 
+        # =====================================================
+        # FINAL SESSION CLEANUP
+        # =====================================================
+
         finally:
+
             # Make absolutely sure the claim-session
             # connection is closed.
+
             try:
+
                 db.close()
+
             except Exception:
+
                 pass
 
     print(
@@ -388,12 +542,27 @@ def process_jobs(worker_id: int):
     )
 
 
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
 
-    print("======================================")
-    print("DESCRIPTIVE EVALUATION WORKER")
-    print(f"MAX WORKERS: {MAX_WORKERS}")
-    print("======================================")
+    print(
+        "======================================"
+    )
+
+    print(
+        "DESCRIPTIVE EVALUATION WORKER"
+    )
+
+    print(
+        f"MAX WORKERS: {MAX_WORKERS}"
+    )
+
+    print(
+        "======================================"
+    )
 
     threads = []
 
@@ -411,9 +580,11 @@ def main():
             )
 
             thread.start()
+
             threads.append(thread)
 
         # Keep main thread alive while workers run.
+
         while True:
 
             alive = any(
@@ -422,6 +593,7 @@ def main():
             )
 
             if not alive:
+
                 break
 
             time.sleep(1)
@@ -431,12 +603,15 @@ def main():
         print(
             "\n======================================"
         )
+
         print(
             "SHUTDOWN REQUESTED"
         )
+
         print(
             "Stopping evaluation workers..."
         )
+
         print(
             "======================================"
         )
@@ -447,21 +622,30 @@ def main():
 
         # Make sure shutdown signal is set even
         # if another exception occurs.
+
         STOP_EVENT.set()
 
         for thread in threads:
+
             thread.join()
 
         print(
             "======================================"
         )
+
         print(
             "ALL EVALUATION WORKERS STOPPED"
         )
+
         print(
             "======================================"
         )
 
 
+# ============================================================
+# ENTRY POINT
+# ============================================================
+
 if __name__ == "__main__":
+
     main()

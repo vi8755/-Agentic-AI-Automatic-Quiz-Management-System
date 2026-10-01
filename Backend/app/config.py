@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str
     BACKEND_URL: str
     FRONTEND_PREVIEW_URL: str = "http://localhost:4173"
+    SUPABASE_URL: str
+    SUPABASE_SERVICE_KEY: str
 
     GROQ_MODEL:str
     GROQ_VISION_MODEL: str = "qwen/qwen3.8-27b"

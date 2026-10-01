@@ -5,6 +5,7 @@ from fastapi import (
     UploadFile,
     File,
 )
+from ..services.supabase_storage_service import upload_pdf
 from ..config import settings
 from fastapi.responses import StreamingResponse
 from io import BytesIO
@@ -2761,55 +2762,30 @@ async def upload_descriptive_question_pdf(
         )
 
     # -----------------------------------------
-    # Create upload directory
-    # -----------------------------------------
-
-    upload_dir = os.path.join(
-        "uploads",
-        "descriptive_questions",
-    )
-
-    os.makedirs(
-        upload_dir,
-        exist_ok=True,
-    )
-
-    # -----------------------------------------
-    # Generate unique filename
-    # -----------------------------------------
-
-    unique_filename = (
-        f"{uuid.uuid4().hex}_"
-        f"{file.filename}"
-    )
-
-    file_path = os.path.join(
-        upload_dir,
-        unique_filename,
-    )
-
-    # -----------------------------------------
-    # Save PDF
+    # Upload PDF to Supabase Storage
     # -----------------------------------------
 
     try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
+
+        file_url = upload_pdf(
+            file_content=file_content,
+            original_filename=file.filename,
+            folder="descriptive_questions",
+        )
 
     except Exception as e:
+
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to save PDF: {str(e)}",
+            detail=(
+                "Failed to upload PDF to storage: "
+                f"{str(e)}"
+            ),
         )
 
     # -----------------------------------------
     # Return file information
     # -----------------------------------------
-
-    file_url = (
-        f"/uploads/descriptive_questions/"
-        f"{unique_filename}"
-    )
 
     return {
         "message": "Question PDF uploaded successfully.",

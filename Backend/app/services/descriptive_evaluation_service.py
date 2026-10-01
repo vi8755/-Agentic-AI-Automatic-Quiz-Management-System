@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from types import SimpleNamespace
 from ..database import SessionLocal
-
+import tempfile
+import requests
 from ..models import (
     DescriptiveSubmission,
     DescriptiveAnswer,
@@ -12,7 +13,7 @@ from ..models import (
 from ..agents.descriptive_evaluation_agent import (
     evaluate_descriptive_answer,
 )
-
+from ..config import settings
 from datetime import datetime, timedelta, timezone
 
 import json
@@ -539,11 +540,13 @@ Do not answer any questions.
 # PDF TEXT EXTRACTION
 # ============================================================
 
-
 def extract_pdf_text(pdf_url: str):
     """
-    Extract readable text from a PDF stored inside
-    the application's uploads directory.
+    Extract readable text from a PDF.
+
+    Supports:
+    1. Local PDF paths
+    2. HTTP/HTTPS PDF URLs
 
     For normal text PDFs:
         PyMuPDF text extraction is used.
@@ -557,102 +560,196 @@ def extract_pdf_text(pdf_url: str):
             "PDF URL is empty."
         )
 
-    pdf_path = pdf_url.lstrip("/")
-
-    if not os.path.exists(pdf_path):
-        raise FileNotFoundError(
-            f"PDF file not found: {pdf_path}"
-        )
-
-    document = fitz.open(pdf_path)
-
-    pages = []
+    temp_file_path = None
 
     try:
 
         # ========================================================
-        # STEP 1: NORMAL TEXT EXTRACTION
+        # STEP 1: RESOLVE PDF SOURCE
         # ========================================================
 
-        for page_number, page in enumerate(
-            document,
-            start=1,
+        if pdf_url.startswith(
+            "http://"
+        ) or pdf_url.startswith(
+            "https://"
         ):
-
-            text = page.get_text("text")
-
-            if text and text.strip():
-
-                pages.append(
-                    f"\n--- PAGE {page_number} ---\n"
-                    f"{text.strip()}"
-                )
-
-        extracted_text = "\n".join(
-            pages
-        ).strip()
-
-        # ========================================================
-        # STEP 2: VISION OCR FALLBACK
-        # ========================================================
-
-        if not extracted_text:
 
             print(
                 "\n========================================"
             )
 
             print(
-                "No text layer found in PDF."
+                "Downloading PDF from remote URL..."
             )
 
             print(
-                "Starting Groq Vision OCR..."
+                pdf_url
             )
 
             print(
                 "========================================\n"
             )
 
-            extracted_text = (
-                extract_pdf_text_with_vision(
-                    document
+            response = requests.get(
+                pdf_url,
+                timeout=60,
+            )
+
+            response.raise_for_status()
+
+            if not response.content:
+                raise ValueError(
+                    "Downloaded PDF is empty."
                 )
-            )
+
+            # Create temporary PDF file
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".pdf",
+            ) as temp_file:
+
+                temp_file.write(
+                    response.content
+                )
+
+                temp_file_path = temp_file.name
+
+            pdf_path = temp_file_path
+
+        else:
+
+            pdf_path = pdf_url.lstrip("/")
+
+            if not os.path.exists(
+                pdf_path
+            ):
+
+                raise FileNotFoundError(
+                    f"PDF file not found: {pdf_path}"
+                )
 
         # ========================================================
-        # STEP 3: FINAL VALIDATION
+        # STEP 2: OPEN PDF
         # ========================================================
 
-        if not extracted_text:
+        document = fitz.open(
+            pdf_path
+        )
 
-            raise ValueError(
-                "No readable text could be extracted "
-                "from the PDF."
+        pages = []
+
+        try:
+
+            # ====================================================
+            # STEP 3: NORMAL TEXT EXTRACTION
+            # ====================================================
+
+            for page_number, page in enumerate(
+                document,
+                start=1,
+            ):
+
+                text = page.get_text(
+                    "text"
+                )
+
+                if text and text.strip():
+
+                    pages.append(
+                        f"\n--- PAGE {page_number} ---\n"
+                        f"{text.strip()}"
+                    )
+
+            extracted_text = "\n".join(
+                pages
+            ).strip()
+
+            # ====================================================
+            # STEP 4: VISION OCR FALLBACK
+            # ====================================================
+
+            if not extracted_text:
+
+                print(
+                    "\n========================================"
+                )
+
+                print(
+                    "No text layer found in PDF."
+                )
+
+                print(
+                    "Starting Groq Vision OCR..."
+                )
+
+                print(
+                    "========================================\n"
+                )
+
+                extracted_text = (
+                    extract_pdf_text_with_vision(
+                        document
+                    )
+                )
+
+            # ====================================================
+            # STEP 5: FINAL VALIDATION
+            # ====================================================
+
+            if not extracted_text:
+
+                raise ValueError(
+                    "No readable text could be extracted "
+                    "from the PDF."
+                )
+
+            print(
+                "\n========================================"
             )
 
-        print(
-            "\n========================================"
-        )
+            print(
+                "PDF TEXT EXTRACTION SUCCESS"
+            )
 
-        print(
-            "PDF TEXT EXTRACTION SUCCESS"
-        )
+            print(
+                f"Characters extracted: "
+                f"{len(extracted_text)}"
+            )
 
-        print(
-            f"Characters extracted: "
-            f"{len(extracted_text)}"
-        )
+            print(
+                "========================================\n"
+            )
 
-        print(
-            "========================================\n"
-        )
+            return extracted_text
 
-        return extracted_text
+        finally:
+
+            document.close()
 
     finally:
 
-        document.close()
+        # ========================================================
+        # STEP 6: DELETE TEMPORARY FILE
+        # ========================================================
+
+        if temp_file_path:
+
+            try:
+
+                if os.path.exists(
+                    temp_file_path
+                ):
+
+                    os.remove(
+                        temp_file_path
+                    )
+
+            except Exception as cleanup_error:
+
+                print(
+                    "Could not delete temporary PDF:",
+                    cleanup_error,
+                )
 # ============================================================
 # SAFE JSON EXTRACTION
 # ============================================================
@@ -2092,18 +2189,21 @@ def evaluate_descriptive_pdf_submission(
     answer_pdf_url = submission.answer_pdf_url
     assignment_id = assignment.id
 
-    question_pdf_path = question_pdf_url.lstrip("/")
-    answer_pdf_path = answer_pdf_url.lstrip("/")
+# =========================================================
+# BUILD FULL BACKEND URL FOR PDF ACCESS
+# =========================================================
 
-    if not os.path.exists(question_pdf_path):
-        raise FileNotFoundError(
-            f"Question PDF file not found: {question_pdf_path}"
-        )
+    backend_url = settings.BACKEND_URL.rstrip("/")
 
-    if not os.path.exists(answer_pdf_path):
-        raise FileNotFoundError(
-            f"Answer PDF file not found: {answer_pdf_path}"
-        )
+    if question_pdf_url.startswith("/"):
+     question_pdf_url = (
+        f"{backend_url}{question_pdf_url}"
+    )
+
+    if answer_pdf_url.startswith("/"):
+     answer_pdf_url = (
+        f"{backend_url}{answer_pdf_url}"
+    )
 
     submission.evaluation_status = "Processing"
     db.commit()
